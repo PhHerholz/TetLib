@@ -514,12 +514,13 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
         M->resize(nv, nv);
         M->resizeNonZeros(nv);
         
-        for(int i = 0; i <= nv; ++i)
+        for(int i = 0; i < nv; ++i)
         {
-            M->outerIndexPtr()[i] = i;
             M->innerIndexPtr()[i] = i;
             M->valuePtr()[i] = .0;
         }
+        
+        M->outerIndexPtr()[nv] = nv;
     }
     
     for(auto h : mesh.finite_cell_handles())

@@ -35,7 +35,10 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     constr.push_back(cntr);
     
     Eigen::SparseMatrix<double> A, L, M;
-    tri.DECLaplacian(L, &M);
+    //tri.DECLaplacian(L, &M);
+    tri.massMatrix(M);
+    tri.FEMLaplacian(L);
+    
     const double t = tri.meanEdgeLengthSquared();
     A = M - t * L;
     
