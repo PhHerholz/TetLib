@@ -6,14 +6,18 @@
 #include <utility>
 #include <unordered_map>
 
-template<typename T>
-struct std::hash<std::array<T, 2>> {
-public:
-    size_t operator()(const std::array<T, 2>& a) const
-    {
-        return std::hash<T>()(a[2]) ^ (std::hash<T>()(a[1]) << 1);
-    }
-};
+
+namespace std
+{
+    template<typename T>
+    struct hash<std::array<T, 2>> {
+    public:
+        size_t operator()(const std::array<T, 2>& a) const
+        {
+            return std::hash<T>()(a[2]) ^ (std::hash<T>()(a[1]) << 1);
+        }
+    };
+}
 
 template<class Kernel>
 class CGALTriangulation;
