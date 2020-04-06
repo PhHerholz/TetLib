@@ -509,7 +509,7 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
     if(M)
     {
         M->resize(nv, nv);
-        M->reserve(nv);
+        M->resizeNonZeros(nv);
         
         for(int i = 0; i <= nv; ++i)
         {
