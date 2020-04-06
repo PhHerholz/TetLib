@@ -33,52 +33,58 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     C(constr.size()) = 1.;
     
     constr.push_back(cntr);
-
+    
     Eigen::SparseMatrix<double> A, L, M;
     tri.DECLaplacian(L, &M);
     const double t = tri.meanEdgeLengthSquared();
     A = M - t * L;
-
+    
     //Eigen::SparseMatrix<double> LTL = L.transpose() * L;
     //Eigen::MatrixXd LTb = L.transpose() * b;
-
     
-    solveConstrainedSymmetric(A, b, constr, C, x);
+    Eigen::VectorXd bb(A.cols());
+    bb.setZero();
+    bb(cntr) = 1.;
     
-   
-
-
+    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol;
+    chol.analyzePattern(A);
+    chol.factorize(A);
+    Eigen::VectorXd h = chol.solve(bb);
+    
+    {
+        double mi = h.minCoeff();
+        double ma = h.maxCoeff();
+        
+        for(int i = 0; i < h.size(); ++i)
+            h(i) = (h(i) - mi) / (ma - mi);
+        
+        x = h;
+    }
+    
+    //solveConstrainedSymmetric(A, b, constr, C, x);
+    
     Eigen::MatrixXd pts;
     tri.getPoints(pts);
     
     const double div = sqrt(- 4 * t * log(1e-20));
     
-    
     std::ofstream file("../x");
     
     for(int i = 0; i < x.size(); ++i)
     {
-         file <<  (pts.row(i) - pts.row(cntr)).norm() << " " << x(i) << "\n";
-    //    x(i) = (pts.row(i) - pts.row(cntr)).norm();
-        x(i) = sqrt(- 4 * t * log((1. - 1e-20) * x(i) + 1e-20)) / div;
-    
-       
+        //    x(i) = (pts.row(i) - pts.row(cntr)).norm();
+        double y = sqrt(- 4 * t * log((1. - 1e-20) * x(i) + 1e-20)) / div;
+        file <<  (pts.row(i) - pts.row(cntr)).norm() << " " << x(i) << " " << y << "\n";
+        
+        x(i) = y;
     }
     
     
     file.close();
-    
-    
-    
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F;
-    tri.marchingTets(x, V, F, 0.5);
-
-    igl::writeOFF("../iso.off", V, F);
 }
 
 
-void setTexture(const std::string filename, igl::opengl::glfw::Viewer& viewer)
+void setTexture(const std::string filename, igl::opengl::ViewerData& viewerData)
 {
     static Eigen::Matrix<unsigned char, -1, -1> R, G, B;
     static std::string currentFile;
@@ -104,7 +110,7 @@ void setTexture(const std::string filename, igl::opengl::glfw::Viewer& viewer)
         }
     }
     
-    viewer.data().set_texture(R, G, B);
+    viewerData.set_texture(R, G, B);
 }
 
 int main(int argc, char *argv[])
@@ -119,7 +125,7 @@ int main(int argc, char *argv[])
     solveDirichletProblem(tri, x);
     
     std::cout << "done" << std::endl;
-       
+    
     Eigen::MatrixXd V;
     Eigen::MatrixXi F;
     
@@ -133,12 +139,16 @@ int main(int argc, char *argv[])
     
     // Init the viewer
     igl::opengl::glfw::Viewer viewer;
-        
+    
     // Attach a menu plugin
     igl::opengl::glfw::imgui::ImGuiMenu menu;
     viewer.plugins.push_back(&menu);
     
     // Customize the menu
+    int cutMeshId = -1;
+    int isoMeshId = -1;
+    float iso = 0.5f;
+    bool orientation = false;
     double offset = 0.0;
     int dir = 0;
     
@@ -154,7 +164,7 @@ int main(int argc, char *argv[])
             double mi = -1.;
             double ma = 1.;
             double oldoffset = offset;
-            ImGui::DragScalar("double", ImGuiDataType_Double, &offset, 0.1, &mi, &ma, "%.4f");
+            ImGui::DragScalar("cut offset", ImGuiDataType_Double, &offset, 0.1, &mi, &ma, "%.4f");
             
             int oldDir = dir;
             ImGui::Combo("Direction", (int *)(&dir), "X\0Y\0Z\0\0");
@@ -166,30 +176,57 @@ int main(int argc, char *argv[])
                 
                 Eigen::MatrixXd V;
                 Eigen::MatrixXi F;
-                    
+                
                 auto ids = tri.cutMesh(plane, V, F);
-             
+                
                 if(ids.size())
                 {
-                    viewer.data().clear();
-                    viewer.data().set_mesh(V, F);
-                    viewer.data().uniform_colors(ambient, diffuse, specular);
-                    viewer.data().show_texture = 1;
+                    viewer.data(cutMeshId).clear();
+                    viewer.data(cutMeshId).set_mesh(V, F);
+                    viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
+                    viewer.data(cutMeshId).show_texture = 1;
                     
                     Eigen::VectorXd x2(ids.size());
                     
                     for(int i = 0; i < ids.size(); ++i)
                         x2(i) = x(ids[i]);
                     
-                  //  Eigen::MatrixXd color;
-                  //  igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, x2, false, color);
+                    //  Eigen::MatrixXd color;
+                    //  igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, x2, false, color);
                     //viewer.data().set_colors(color);
-               
-                    setTexture("../data/tex.png", viewer);
+                    
+                    setTexture("../data/tex.png", viewer.data(cutMeshId));
                     Eigen::MatrixXd UV(x2.rows(), 2);
                     UV.col(0) = UV.col(1) = x2;
-                    viewer.data().set_uv(UV);
+                    viewer.data(cutMeshId).set_uv(UV);
                 }
+            }
+        }
+        
+        
+        if (ImGui::CollapsingHeader("Iso surface", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            if(ImGui::SliderFloat("iso value", &iso, 0.f, 1.f, "%.4f") || ImGui::Checkbox("orientation", &orientation) )
+            {
+                Eigen::MatrixXd Vi;
+                Eigen::MatrixXi Fi;
+                
+                tri.marchingTets(x, Vi, Fi, iso);
+                
+                if(orientation)
+                {
+                    for(int i = 0; i < Fi.rows(); ++i)
+                        std::swap(Fi(i, 1), Fi(i, 2));
+                }
+                
+                viewer.data(isoMeshId).clear();
+                viewer.data(isoMeshId).set_mesh(Vi, Fi);
+                viewer.data(isoMeshId).uniform_colors(ambient, diffuse, specular);
+            }
+            
+            if(ImGui::Button("clear iso surface"))
+            {
+                viewer.data(isoMeshId).clear();
             }
         }
     };
@@ -200,9 +237,12 @@ int main(int argc, char *argv[])
     viewer.core().background_color.setOnes();
     viewer.data().uniform_colors(ambient, diffuse, specular);
     viewer.data().show_texture = 1;
-    setTexture("../data/tex.png", viewer);
+    setTexture("../data/tex.png", viewer.data());
     Eigen::MatrixXd UV(V.rows(), 2);
     viewer.data().set_uv(UV.setZero());
+    cutMeshId = viewer.selected_data_index;
+    
+    isoMeshId = viewer.append_mesh();
     
     viewer.launch();
 }

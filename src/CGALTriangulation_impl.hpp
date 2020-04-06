@@ -226,15 +226,18 @@ struct Edge
         return (i < e.i) || (i == e.i && j < e.j);
     }
 };
-
-template<>
-struct std::hash<Edge> {
-public:
-    size_t operator()(const Edge& e) const
-    {
-        return std::hash<int>()(e.i) ^ (std::hash<int>()(e.j) << 1);
-    }
-};
+    
+namespace std
+{
+    template<>
+    struct hash<Edge> {
+    public:
+        size_t operator()(const Edge& e) const
+        {
+                return std::hash<int>()(e.i) ^ (std::hash<int>()(e.j) << 1);
+        }
+    };
+}
 
 
 
