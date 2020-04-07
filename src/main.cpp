@@ -5,18 +5,91 @@
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
 #include <igl/colormap.h>
+#include <igl/cotmatrix.h>
+#include <igl/massmatrix.h>
+
 #include <imgui/imgui.h>
 #include <iostream>
 
+#include <unsupported/Eigen/SparseExtra>
+#include <unsupported/Eigen/ArpackSupport>
 #include "lodepng.h"
 #include "CGALTriangulation.hpp"
 #include "CGALPolyhedron.hpp"
 #include "TetgenMeshPolyhedron.hpp"
+#include "CGALMeshPolyhedron.hpp"
 #include "SolveConstrained.hpp"
 
 #include <CGAL/Simple_cartesian.h>
 
 typedef CGAL::Simple_cartesian<double> Kernel;
+
+void tutte3d(CGALTriangulation<Kernel>& tri)
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F;
+    
+    auto surfaceIds = tri.surfaceMesh(V, F);
+    
+    // conformalized mean curvature flow
+    
+    Eigen::SparseMatrix<double> L;
+    igl::cotmatrix(V, F, L);
+    
+    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol;
+    chol.analyzePattern(L);
+    
+    Eigen::MatrixXd Vi = V;
+    
+    for(int i = 0; i < 100; ++i)
+    {        
+        Eigen::SparseMatrix<double> M;
+        igl::massmatrix(Vi, F, igl::MASSMATRIX_TYPE_DEFAULT, M);
+        
+        Eigen::SparseMatrix<double> A = M - 1e-2 * L;
+        
+        chol.factorize(A);
+        Vi = chol.solve(M * Vi);
+        
+        Vi *= sqrt(4 * M_PI / M.sum());
+    }
+    
+    Vi.rowwise() -= Vi.colwise().mean();
+    Vi.rowwise().normalize();
+    
+    igl::writeOFF("./surfSphere.off", Vi, F);
+    igl::writeOFF("./surf.off", V, F);
+    
+    // tutte embedding
+    
+    Eigen::SparseMatrix<double> Ldec, Lfem;
+    
+    tri.FEMLaplacian(Lfem);
+    tri.DECLaplacian(Ldec);
+    Ldec *= -1;
+    
+    Eigen::MatrixXd b(Ldec.cols(), 3);
+    Eigen::MatrixXd xfem, xdec;
+    b.setZero();
+    
+    std::cout << "solveConstrainedSymmetric" << std::endl;
+    solveConstrainedSymmetric(Ldec, b, surfaceIds, Vi, xdec);
+   
+    std::cout << "solveConstrainedSymmetric" << std::endl;
+    solveConstrainedSymmetric(Lfem, b, surfaceIds, Vi, xfem);
+    
+    tri.setPoints(xdec);
+    auto voldec = tri.tetrahedraVolumes();
+    
+    tri.setPoints(xfem);
+    auto volfem = tri.tetrahedraVolumes();
+    
+    
+    std::cout <<
+    std::count_if(voldec.begin(), voldec.end(), [](const double d){return d < 0;}) << " " <<
+    std::count_if(volfem.begin(), volfem.end(), [](const double d){return d < 0;}) << " " << voldec.size() << std::endl;
+}
+
 
 void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
 {
@@ -34,13 +107,30 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     
     constr.push_back(cntr);
     
-    Eigen::SparseMatrix<double> A, L, M;
+    Eigen::SparseMatrix<double> A, L, L2, M;
     //tri.DECLaplacian(L, &M);
     tri.massMatrix(M);
     tri.FEMLaplacian(L);
     
+    tri.DECLaplacian(L2);
+    
+    
+    
+    {
+        
+        constr.pop_back();
+        
+        std::ofstream file("../constr");
+        for(int i : constr) file << i << "\n";
+        file.close();
+        
+        Eigen::saveMarket(L, "../LFEM.mtx");
+        Eigen::saveMarket(L2, "../LDEC.mtx");
+    }
+    
+    
     const double t = tri.meanEdgeLengthSquared();
-    A = M - t * L;
+    A = M + t * L;
     
     //Eigen::SparseMatrix<double> LTL = L.transpose() * L;
     //Eigen::MatrixXd LTb = L.transpose() * b;
@@ -118,14 +208,89 @@ void setTexture(const std::string filename, igl::opengl::ViewerData& viewerData)
 
 int main(int argc, char *argv[])
 {
+    if(1)
+    {
+        if(argc == 2)
+        {
+            CGALTriangulation<Kernel> tri;
+            tri.read(argv[1]);
+            
+            Eigen::SparseMatrix<double> L, L2, M;
+            tri.DECLaplacian(L, &M);
+            tri.FEMLaplacian(L2);
+                      
+            auto surf = tri.surfaceVertices();
+            
+            std::ofstream file("./boundary");
+            for(int i : surf) file << i << "\n";
+            file.close();
+            
+            Eigen::saveMarket(L2, "./Lfem.mtx");
+            Eigen::saveMarket(L, "./L.mtx");
+            Eigen::saveMarket(M, "./M.mtx");
+        
+            std::cout << "starting tutte3d" << std::endl;
+            tutte3d(tri);
+            
+        } else if(argc == 3)
+        {
+            double d = atof(argv[2]);
+            
+            std::cout << "meshing " << argv[1] << " with cell size " << d << std::endl;
+            
+            CGALPolyhedron<Kernel> p;
+            CGALTriangulation<Kernel> tri;
+           
+            p.load(argv[1]);
+            meshPolyhedron(p, tri, d);
+           // tetgenMeshPolyhedron(p, tri, d);
+            
+            std::cout << tri.mesh.number_of_vertices() << " vertices." << std::endl;
+            
+            tri.write(std::string(argv[1]).append(".tet"));
+        } else if(argc == 4)
+        {
+            std::cout << "extracting iso surface for mesh " << argv[1] << " with function " << argv[2] << " at value " << argv[3]  << std::endl;
+            
+            CGALTriangulation<Kernel> tri;
+            tri.read(argv[1]);
+            
+            Eigen::VectorXd x(tri.mesh.number_of_vertices());
+            
+            std::ifstream file(argv[2]);
+            
+            int cnt = 0;
+            while(!file.eof() && cnt < x.size())
+            {
+                file >> x(cnt++);
+            }
+            
+            file.close();
+            
+            Eigen::MatrixXd V;
+            Eigen::MatrixXi F;
+            
+            double iso = atof(argv[3]);
+            tri.marchingTets(x, V, F, iso);
+            igl::writeOFF(std::string(argv[1]).append("iso.off"), V, F);
+        }
+        
+        return 0;
+    }
+    
     CGALPolyhedron<Kernel> p;
     CGALTriangulation<Kernel> tri;
     
-    p.load("../data/sphere.off");
-    tetgenMeshPolyhedron(p, tri, 0.0001);
+    p.load("../data/bunny.off");
+   // tetgenMeshPolyhedron(p, tri, 0.0001);
+    meshPolyhedron(p, tri, 0.01);
+   // tutte3d(tri);
+  //  return 0;
     
     Eigen::MatrixXd x;
-    solveDirichletProblem(tri, x);
+    x.resize(tri.mesh.number_of_vertices(), 1);
+    x.setZero();
+  //  solveDirichletProblem(tri, x);
     
     std::cout << "done" << std::endl;
     

@@ -89,7 +89,7 @@ CGALTriangulation<TKernel>::write(std::string fname)
 {
     std::ofstream file(fname);
     
-    int nv = 0;
+    int nv = mesh.number_of_vertices();
     int nt = 0;
     
     // should not be necessary as there should be only one infinite vertex
@@ -114,7 +114,9 @@ template<class TKernel>
 void
 CGALTriangulation<TKernel>::read(std::string fname)
 {
-    
+    IndexedTetMesh indexed;
+    indexed.read(fname);
+    indexed.convert(*this);
 }
 
 
@@ -159,6 +161,37 @@ CGALTriangulation<TKernel>::meanEdgeLengthSquared()
     ret /= cnt;
     
     return ret * ret;
+}
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::setPoints(const Eigen::MatrixXd& V)
+{
+    if(V.rows() == mesh.number_of_vertices())
+    {
+        for(auto h : mesh.finite_vertex_handles())
+        {
+            if(h->info() == -1 || h->info() >= V.rows()) std::cout << "err" << std::endl;
+            
+            h->point() = Point(V(h->info(), 0), V(h->info(), 1), V(h->info(), 2));
+        }
+        
+    } else std::cout << "V.rows() does not match" << std::endl;
+}
+
+template<class TKernel>
+std::vector<double>
+CGALTriangulation<TKernel>::tetrahedraVolumes()
+{
+    std::vector<double> volumes(mesh.number_of_finite_cells());
+    
+    for(auto it = mesh.finite_cells_begin(); it != mesh.finite_cells_end(); ++it)
+    {
+        if(it->info() >= volumes.size()) std::cout << "error 2" << std::endl;
+        volumes[it->info()] = mesh.tetrahedron(it).volume();
+    }
+        
+    return volumes;
 }
 
 template<class TKernel>
@@ -368,8 +401,67 @@ CGALTriangulation<TKernel>::marchingTets(const Eigen::VectorXd& x, Eigen::Matrix
          F(i, 2) = tris[i][2];
      }
 }
-
-
+  
+template<class TKernel>
+std::vector<int>
+CGALTriangulation<TKernel>::surfaceMesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F)
+{
+    std::vector<int> idMap(mesh.number_of_vertices(), -1);
+    std::vector<int> ids;
+    std::vector<std::array<int, 3>> tris;
+    std::vector<std::array<double, 3>> pts;
+    
+    int cnt = 0;
+    
+    for(auto h : mesh.finite_cell_handles())
+    {
+        for(int i = 0; i < 4; ++i)
+        {
+            const int vid = mesh.mirror_vertex(h, i)->info();
+            std::array<int, 3> f;
+            
+            if(vid == -1)
+            {
+                for(int k = 0; k < 3; ++k)
+                {
+                    auto vh = h->vertex(Triangulation::vertex_triple_index(i, k));
+                    int id = vh->info();
+                
+                    if(idMap[id] == -1)
+                    {
+                        pts.push_back(std::array<double, 3>{vh->point()[0], vh->point()[1], vh->point()[2]});
+                        ids.push_back(id);
+                        idMap[id] = cnt++;
+                    }
+                    
+                    f[k] = idMap[id];
+                }
+                
+                tris.push_back(f);
+            }
+        }
+    }
+    
+    V.resize(cnt, 3);
+    
+    for(int i = 0; i < cnt; ++i)
+    {
+        for(int k = 0; k < 3; ++k)
+            V(i, k) = pts[i][k];
+    }
+  
+    F.resize(tris.size(), 3);
+    
+    for(int i = 0; i < tris.size(); ++i)
+    {
+        F(i, 0) = tris[i][0];
+        F(i, 1) = tris[i][2];
+        F(i, 2) = tris[i][1];
+    }
+    
+    return ids;
+}
+    
 template<class TKernel>
 std::vector<int>
 CGALTriangulation<TKernel>::cutMesh(const std::array<double, 4>& plane, Eigen::MatrixXd& V, Eigen::MatrixXi& F)
@@ -516,6 +608,7 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
         
         for(int i = 0; i < nv; ++i)
         {
+            M->outerIndexPtr()[i] = i;
             M->innerIndexPtr()[i] = i;
             M->valuePtr()[i] = .0;
         }

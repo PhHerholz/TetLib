@@ -1,4 +1,5 @@
 #include "SolveConstrained.hpp"
+#include <iostream>
 
 void solveConstrainedSymmetric(const Eigen::SparseMatrix<double>& A, const Eigen::MatrixXd& B,
                                const std::vector<int>& constr, const Eigen::MatrixXd& constrValues,
@@ -12,7 +13,14 @@ void solveConstrainedSymmetric(const Eigen::SparseMatrix<double>& A, const Eigen
     std::vector<int> idMap(n, -1);
     
     int cnt = n;
-    for(int j = constr.size() - 1; j >= 0; --j) idMap[constr[j]] = --cnt;
+    for(int j = constr.size() - 1; j >= 0; --j)
+    {
+        if(idMap[constr[j]] != -1) std::cout << "err0" << std::endl;
+        
+        if(cnt == 0) std::cout << "err1" << std::endl;
+        
+        idMap[constr[j]] = --cnt;
+    }
     
     const int nc = n - cnt;
     const int ni = n - nc;
@@ -20,6 +28,7 @@ void solveConstrainedSymmetric(const Eigen::SparseMatrix<double>& A, const Eigen
     for(int& i : idMap)
         if(i == -1) i = --cnt;
     
+    if(cnt != 0) std::cout << "err2" << std::endl;
     assert(cnt == 0);
     
     // build matrices AII and AIB
@@ -58,14 +67,18 @@ void solveConstrainedSymmetric(const Eigen::SparseMatrix<double>& A, const Eigen
     
     // build, factorize and solve system
     Eigen::SparseMatrix<double> AII(ni, ni), AIB(ni, nc);
-    AII.setFromTriplets(tripII.begin(), tripII.end());
+     std::cout << "set triplets....";
+    AII.setFromTriplets(tripII.begin(), tripII.end());   std::cout << "done" << std::endl;
     AIB.setFromTriplets(tripIB.begin(), tripIB.end());
     
-    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol;
+   // Eigen::SparseLU<Eigen::SparseMatrix<double>> chol;
     
+    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol;
+       
+        std::cout << "factorize....";
     chol.analyzePattern(AII);
     chol.factorize(AII);
-    
+       std::cout << "done" << std::endl;
     Eigen::MatrixXd XI = chol.solve(BI - AIB * constrValues);
     
     // construct final solution

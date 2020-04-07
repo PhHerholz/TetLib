@@ -12,17 +12,19 @@
 #include "CGALTriangulation.hpp"
 #include "Timer.hpp"
 
+#include <unordered_map>
+
 namespace internal
 {
     template<class Kernel, class TMesh>
     IndexedTetMesh
-    extractIndexed(const TMesh& mesh)
+    extractIndexed(TMesh& mesh)
     {
         using namespace std;
         auto& tr = mesh.triangulation();
-        map<typename TMesh::Vertex_handle, int> idMap;
+        map<typename TMesh::Vertex_handle, unsigned> idMap;
         IndexedTetMesh tm;
-        int cnt = 0;
+        unsigned cnt = 0;
         
         for(auto it = tr.finite_vertices_begin(); it != tr.finite_vertices_end(); ++it)
         {

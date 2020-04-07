@@ -35,6 +35,9 @@ public:
     std::vector<int>
     cutMesh(const std::array<double, 4>& plane, Eigen::MatrixXd& V, Eigen::MatrixXi& F);
     
+    std::vector<int>
+    surfaceMesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F);
+    
     // extract a level set of the piecewise linear function induced by x
     void
     marchingTets(const Eigen::VectorXd& x, Eigen::MatrixXd& V, Eigen::MatrixXi& F, const double val = 0.0);
@@ -73,6 +76,12 @@ public:
       
     void
     getPoints(Eigen::MatrixXd& V);
+    
+    void
+    setPoints(const Eigen::MatrixXd& V);
+    
+    std::vector<double>
+    tetrahedraVolumes();
     
     // find a vertex that is close to the mean of all others
     int
