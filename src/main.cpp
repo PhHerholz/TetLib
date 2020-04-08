@@ -133,45 +133,50 @@ void setTexture(const std::string filename, igl::opengl::ViewerData& viewerData)
 }
 
 void
-tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=10)
+tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=500)
 {
     using namespace std;
     using namespace std::chrono;
 
 	const double area = .1;
 
-	std::cout << "Generate random sampels" << std::endl;
+	std::cout << "Generate random samples" << std::endl;
 	Eigen::MatrixXd randomsamples = randomPoints(num_samples);
-	std::cout  << randomsamples << std::endl;
     
-    tetgenio in, out;
+    tetgenio in, out, out0;
     
     in.firstnumber = 0;
 
-    in.numberofpoints = num_samples + 1; // p.poly.size_of_vertices();
+    in.numberofpoints = num_samples + 1; 
     in.pointlist = new REAL[in.numberofpoints * 3];
 
+	// add origin
+	in.pointlist[0]=0;
+	in.pointlist[1]=0;
+	in.pointlist[2]=0;
+
+	// add normalized samples (on 3d shpere)
 	for(int i=0; i< randomsamples.cols(); i++){
 		for(int j=0; j<3; j++){
-			in.pointlist[3*i+j] = randomsamples(j,i);
+			in.pointlist[3+3*i+j] = randomsamples(j,i) / randomsamples.col(i).norm();
 		}
 	}
 
-    /*
-    auto it = p.poly.vertices_begin();
-    
-    for(int i = 0; i < in.numberofpoints; ++i, ++it)
-        for(int j = 0; j < 3; ++j)
-            in.pointlist[3 * i + j] = it->point()[j];
-	*/
-
+	// generate simple mesh
+	std::cout << "Step 1: generate starmesh" << std::endl;
     tetgenbehavior settings;
-    string opts = string(""); // string("q1.414a") + to_string(area);
-    
+    string opts = string(""); //string("q1.414a") + to_string(area);
     settings.parse_commandline((char*)opts.c_str());
     settings.quiet = 1;
-    
-    tetrahedralize(&settings, &in, &out);
+    tetrahedralize(&settings, &in, &out0);
+	std::cout << "...done" << std::endl;
+
+
+	std::cout << "Step 2: optimize" << std::endl;
+    opts = string("rq1.414"); //string("q1.414a") + to_string(area);
+    settings.parse_commandline((char*)opts.c_str());
+    settings.quiet = 1;
+    tetrahedralize(&settings, &out0, &out);
     
     
     IndexedTetMesh mesh;
