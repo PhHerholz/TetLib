@@ -133,33 +133,46 @@ void setTexture(const std::string filename, igl::opengl::ViewerData& viewerData)
 }
 
 void
-tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=500)
+tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=500, int n_orbitpoints=10)
 {
     using namespace std;
     using namespace std::chrono;
 
 	const double area = .1;
+	double orbit_height=.5;
 
 	std::cout << "Generate random samples" << std::endl;
 	Eigen::MatrixXd randomsamples = randomPoints(num_samples);
+	Eigen::MatrixXd orbitpoints = randomPoints(n_orbitpoints);
     
     tetgenio in, out, out0;
     
     in.firstnumber = 0;
 
-    in.numberofpoints = num_samples + 1; 
+    in.numberofpoints = num_samples + n_orbitpoints + 1; 
     in.pointlist = new REAL[in.numberofpoints * 3];
+
+	int offst = 0;
 
 	// add origin
 	in.pointlist[0]=0;
 	in.pointlist[1]=0;
 	in.pointlist[2]=0;
+	offst+=3;
 
 	// add normalized samples (on 3d shpere)
 	for(int i=0; i< randomsamples.cols(); i++){
 		for(int j=0; j<3; j++){
-			in.pointlist[3+3*i+j] = randomsamples(j,i) / randomsamples.col(i).norm();
+			in.pointlist[offst+j] = randomsamples(j,i) / randomsamples.col(i).norm();
 		}
+		offst+=3;
+	}
+	// add orbit points (on a mini sphere inside the other one)
+	for(int i=0; i< orbitpoints.cols(); i++){
+		for(int j=0; j<3; j++){
+			in.pointlist[offst+j] = orbit_height * orbitpoints(j,i) / orbitpoints.col(i).norm();
+		}
+		offst+=3;
 	}
 
 	// generate simple mesh
