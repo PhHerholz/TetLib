@@ -133,7 +133,7 @@ void setTexture(const std::string filename, igl::opengl::ViewerData& viewerData)
 }
 
 void
-tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=500, int n_orbitpoints=10)
+tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=30, int n_orbitpoints=3)
 {
     using namespace std;
     using namespace std::chrono;
@@ -186,7 +186,7 @@ tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=500, int n_orbi
 
 
 	std::cout << "Step 2: optimize" << std::endl;
-    opts = string("rq1.414"); //string("q1.414a") + to_string(area);
+    opts = string("rq1.1/20"); //string("q1.414a") + to_string(area);
     settings.parse_commandline((char*)opts.c_str());
     settings.quiet = 1;
     tetrahedralize(&settings, &out0, &out);
@@ -214,10 +214,28 @@ int main(int argc, char *argv[])
     //meshPolyhedron(p, tri, 0.01);
    // tutte3d(tri);
     //  return 0;
+	int n_samples, n_orbitpoints;
+	if (argc == 2) {
+		n_samples    = atoi(argv[1]);		
+		n_orbitpoints = 5;
+	} else if (argc == 3) {
+		n_samples     = atoi(argv[1]);		
+		n_orbitpoints = atoi(argv[2]);
+	} else {
+		n_samples    = 100;
+		n_orbitpoints = 5;
+	}
 	
 	std::cout << "START" << std::endl;
-	tetgenMeshSphere(tri);
+	tetgenMeshSphere(tri, n_samples, n_orbitpoints);
 	std::cout << "Finished tetgen" << std::endl;
+
+    typedef CGALTriangulation<Kernel>::Point Point;
+    Point origin = Point(0., 0., 0.);
+    for (auto a: tri.mesh.finite_vertex_handles()) {
+        int v_ind = a->info();
+		std::cout << sqrt(CGAL::squared_distance(origin, a->point())) << std::endl;
+	}
 
     Eigen::MatrixXd x;
     x.resize(tri.mesh.number_of_vertices(), 1);
