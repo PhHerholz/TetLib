@@ -8,12 +8,12 @@
 
 template<class TPolyhedron>
 void
-tetgenMeshPolyhedron(const TPolyhedron& p, CGALTriangulation<typename TPolyhedron::Kernel>& tri, const double area)
+tetgenMeshPolyhedron(const TPolyhedron& p, CGALTriangulation<typename TPolyhedron::Kernel>& tri, std::string tetgentriangstring="", std::string tetgenoptstring="" )
 {
     using namespace std;
     using namespace std::chrono;
     
-    tetgenio in, out;
+    tetgenio in, intermed, out;
     
     in.firstnumber = 0;
     in.numberofpoints = p.poly.size_of_vertices();
@@ -50,15 +50,23 @@ tetgenMeshPolyhedron(const TPolyhedron& p, CGALTriangulation<typename TPolyhedro
         p->vertexlist[2] = itf->facet_begin()->opposite()->vertex()->id;
     }
     
+	// generate simple tetmesh in the polyhedron
     tetgenbehavior settings;
-    string opts = string("pq1.414a") + to_string(area);
-    
+    string opts = "p" + tetgentriangstring; //string("pq1.414a") + to_string(area);
     settings.parse_commandline((char*)opts.c_str());
     settings.quiet = 1;
     
-    tetrahedralize(&settings, &in, &out);
+    tetrahedralize(&settings, &in, &intermed);
     
+	// optimize the mesh 
+    settings;
+    opts = "r" + tetgenoptstring; 
+    settings.parse_commandline((char*)opts.c_str());
+    settings.quiet = 1;
     
+    tetrahedralize(&settings, &intermed, &out);
+
+	// write it 
     IndexedTetMesh mesh;
     
     mesh.vertices.resize(out.numberofpoints);

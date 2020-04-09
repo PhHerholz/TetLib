@@ -1,5 +1,6 @@
 #include <igl/readOFF.h>
 #include <igl/writeOFF.h>
+#include <igl/colormap.h>
 
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
@@ -133,7 +134,7 @@ void setTexture(const std::string filename, igl::opengl::ViewerData& viewerData)
 }
 
 void
-tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=30, int n_orbitpoints=3)
+tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=30, int n_orbitpoints=3, std::string tetgenoptstring="")//, float q_maxre=-1, float q_inda=-1, float a_val=-1, int Oops=-1, int Olevel=-1)
 {
     using namespace std;
     using namespace std::chrono;
@@ -175,8 +176,9 @@ tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=30, int n_orbit
 		offst+=3;
 	}
 
-	// generate simple mesh
+	// GENERATE
 	std::cout << "Step 1: generate starmesh" << std::endl;
+
     tetgenbehavior settings;
     string opts = string(""); //string("q1.414a") + to_string(area);
     settings.parse_commandline((char*)opts.c_str());
@@ -185,12 +187,30 @@ tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=30, int n_orbit
 	std::cout << "...done" << std::endl;
 
 
+	/*
+	// OPTIMIZE
 	std::cout << "Step 2: optimize" << std::endl;
-    opts = string("rq1.1/20"); //string("q1.414a") + to_string(area);
+    opts = string("");
+	std::string qstring = string("");
+	if (q_maxre > 0 || q_minda > 0) 
+		qstring += "q";
+		if (q_maxre > 0) {
+			qstring += to_string(q_maxre);
+		}
+		qstring += 
+		if (q_minda < 0) {
+			qs	
+		}
+		
+		
+		, float a_val=-1, int Oops=-1, int Olevel=-1
+	*/
+    //opts = string("");
+	//string("rq1.1/20"); //string("q1.414a") + to_string(area);
+	opts= "r" + tetgenoptstring;
     settings.parse_commandline((char*)opts.c_str());
-    settings.quiet = 1;
+    //settings.quiet = 1;
     tetrahedralize(&settings, &out0, &out);
-    
     
     IndexedTetMesh mesh;
     
@@ -203,32 +223,127 @@ tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=30, int n_orbit
     mesh.convert(tri);
 }
 
+void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
+{
+    const int cntr = tri.centerVertex();
+    auto constr = tri.surfaceVertices();
+    
+    const int n = tri.mesh.number_of_vertices();
+    
+    constr.push_back(cntr);
+    
+    Eigen::SparseMatrix<double> A, L, L2, M;
+    tri.massMatrix(M);
+    tri.FEMLaplacian(L);
+    tri.DECLaplacian(L2);
+    
+    {
+        constr.pop_back();
+        
+        std::ofstream file("../constr");
+        for(int i : constr) file << i << "\n";
+        file.close();
+        
+        Eigen::saveMarket(L, "../LFEM.mtx");
+        Eigen::saveMarket(L2, "../LDEC.mtx");
+    }
+    
+    
+    const double t = tri.meanEdgeLengthSquared();
+    A = M + t * L;
+    
+    //Eigen::SparseMatrix<double> LTL = L.transpose() * L;
+    //Eigen::MatrixXd LTb = L.transpose() * b;
+    
+    Eigen::VectorXd bb(A.cols());
+    bb.setZero();
+    bb(cntr) = 1.;
+    
+    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol;
+    chol.analyzePattern(A);
+    chol.factorize(A);
+    Eigen::VectorXd h = chol.solve(bb);
+    
+    {
+        double mi = h.minCoeff();
+        double ma = h.maxCoeff();
+        
+        for(int i = 0; i < h.size(); ++i)
+            h(i) = (h(i) - mi) / (ma - mi);
+        
+        x = h;
+    }
+    
+    //solveConstrainedSymmetric(A, b, constr, C, x);
+    
+    Eigen::MatrixXd pts;
+    tri.getPoints(pts);
+    
+    const double div = sqrt(- 4 * t * log(1e-20));
+    
+    std::ofstream file("../x");
+    
+    for(int i = 0; i < x.size(); ++i)
+    {
+        //    x(i) = (pts.row(i) - pts.row(cntr)).norm();
+        double y = sqrt(- 4 * t * log((1. - 1e-20) * x(i) + 1e-20)) / div;
+        file <<  (pts.row(i) - pts.row(cntr)).norm() << " " << x(i) << " " << y << "\n";
+        
+        x(i) = y;
+    }
+    
+    
+    file.close();
+}
 
 int main(int argc, char *argv[])
 {
-    CGALPolyhedron<Kernel> p;
     CGALTriangulation<Kernel> tri;
     
-    //p.load("../data/bunny.off");
-   // tetgenMeshPolyhedron(p, tri, 0.0001);
-    //meshPolyhedron(p, tri, 0.01);
-   // tutte3d(tri);
-    //  return 0;
-	int n_samples, n_orbitpoints;
-	if (argc == 2) {
+	int mode = 0; 
+	// sphere generation options (with default values)
+	std::string tetgenoptstring    =  "";
+	std::string tetgentriangstring =  "";
+	int n_samples          = 100;
+	int n_orbitpoints      =   5; 
+	if (argc >= 2) {
 		n_samples    = atoi(argv[1]);		
-		n_orbitpoints = 5;
-	} else if (argc == 3) {
-		n_samples     = atoi(argv[1]);		
-		n_orbitpoints = atoi(argv[2]);
-	} else {
-		n_samples    = 100;
-		n_orbitpoints = 5;
+		if (argc >= 3) {
+			n_orbitpoints = atoi(argv[2]);
+			if (argc >= 4) {
+				tetgenoptstring = argv[3];
+				if (argc >= 5) {
+					tetgentriangstring = argv[4];
+					if (argc >= 6) {
+						mode = atoi(argv[5]);
+					}
+				}
+			}
+		}
 	}
 	
 	std::cout << "START" << std::endl;
-	tetgenMeshSphere(tri, n_samples, n_orbitpoints);
+	if (mode == 0){
+		// SPHERE
+		tetgenMeshSphere(tri, n_samples, n_orbitpoints, tetgenoptstring);
+	} else {
+		// POLYHEDRON
+		CGALPolyhedron<Kernel> p;
+		p.load("../data/bunny.off");
+		tetgenMeshPolyhedron(p, tri, tetgentriangstring, tetgenoptstring);
+	}
 	std::cout << "Finished tetgen" << std::endl;
+
+	std::cout << "VOLUME" << std::endl;
+	Eigen::VectorXd vols; 
+	tri.fillMinAnglePerCell(vols);
+
+	std::cout << vols.size() << std::endl;
+	Eigen::MatrixXd cellcolors; 
+	igl::colormap(igl::COLOR_MAP_TYPE_JET, vols, true, cellcolors);
+	std::cout << cellcolors << std::endl;
+
+	Eigen::MatrixXd facecolors;
 
     typedef CGALTriangulation<Kernel>::Point Point;
     Point origin = Point(0., 0., 0.);
@@ -248,7 +363,11 @@ int main(int argc, char *argv[])
     Eigen::MatrixXi F;
     
     std::array<double, 4> plane{1,0,0,100};
-    tri.cutMesh(plane, V, F);
+	std::vector<std::vector<int>> cmreturn = tri.cutMesh(plane, V, F);
+	std::vector<int>  ids     = cmreturn[0];
+	std::vector<int>  faceids = cmreturn[1];
+	facecolors.resize(faceids.size(), 3);
+	for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors.row(faceids[i]);
     
     // Style
     Eigen::Vector3d ambient(.1,.1,.1);
@@ -295,14 +414,19 @@ int main(int argc, char *argv[])
                 Eigen::MatrixXd V;
                 Eigen::MatrixXi F;
                 
-                auto ids = tri.cutMesh(plane, V, F);
+                cmreturn = tri.cutMesh(plane, V, F);
+				ids = cmreturn[0];
+				faceids = cmreturn[1];
+				facecolors.resize(faceids.size(), 3);
+				for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors.row(faceids[i]);
                 
                 if(ids.size())
                 {
                     viewer.data(cutMeshId).clear();
                     viewer.data(cutMeshId).set_mesh(V, F);
-                    viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
-                    viewer.data(cutMeshId).show_texture = 1;
+					viewer.data(cutMeshId).set_colors(facecolors);
+                    //viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
+                    //viewer.data(cutMeshId).show_texture = 1;
                     
                     Eigen::VectorXd x2(ids.size());
                     
@@ -313,10 +437,12 @@ int main(int argc, char *argv[])
                     //  igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, x2, false, color);
                     //viewer.data().set_colors(color);
                     
+					/*
                     setTexture("../data/tex.png", viewer.data(cutMeshId));
                     Eigen::MatrixXd UV(x2.rows(), 2);
                     UV.col(0) = UV.col(1) = x2;
                     viewer.data(cutMeshId).set_uv(UV);
+					*/
                 }
             }
         }
@@ -352,12 +478,15 @@ int main(int argc, char *argv[])
     
     // Plot the mesh
     viewer.data().set_mesh(V, F);
+	viewer.data().set_colors(facecolors);
     viewer.core().background_color.setOnes();
-    viewer.data().uniform_colors(ambient, diffuse, specular);
-    viewer.data().show_texture = 1;
+    //viewer.data().uniform_colors(ambient, diffuse, specular);
+    //viewer.data().show_texture = 1;
+	/*
     setTexture("../data/tex.png", viewer.data());
     Eigen::MatrixXd UV(V.rows(), 2);
     viewer.data().set_uv(UV.setZero());
+	*/
     cutMeshId = viewer.selected_data_index;
     
     isoMeshId = viewer.append_mesh();

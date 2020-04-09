@@ -32,7 +32,7 @@ public:
    
     // extract all faces that form the boundary of all cells that are completly on the positive side of the plane.
     // return indizes of original vertices. Output mesh consists of individual triangles.
-    std::vector<int>
+    std::vector<std::vector<int>>
     cutMesh(const std::array<double, 4>& plane, Eigen::MatrixXd& V, Eigen::MatrixXi& F);
     
     std::vector<int>
@@ -82,6 +82,9 @@ public:
     
     std::vector<double>
     tetrahedraVolumes();
+
+	void
+	fillMinAnglePerCell(Eigen::VectorXd &V);
     
     // find a vertex that is close to the mean of all others
     int

@@ -463,7 +463,7 @@ CGALTriangulation<TKernel>::surfaceMesh(Eigen::MatrixXd& V, Eigen::MatrixXi& F)
 }
     
 template<class TKernel>
-std::vector<int>
+std::vector<std::vector<int>>
 CGALTriangulation<TKernel>::cutMesh(const std::array<double, 4>& plane, Eigen::MatrixXd& V, Eigen::MatrixXi& F)
 {
     std::vector<char> sideFlag(mesh.number_of_vertices(), 3);
@@ -482,6 +482,7 @@ CGALTriangulation<TKernel>::cutMesh(const std::array<double, 4>& plane, Eigen::M
     
     std::vector<Point> tris;
     std::vector<int> ids;
+	std::vector<int> cellids;
     
     for(auto h : mesh.finite_cell_handles())
     {
@@ -504,6 +505,7 @@ CGALTriangulation<TKernel>::cutMesh(const std::array<double, 4>& plane, Eigen::M
                         tris.push_back(h->vertex(face[k])->point());
                         ids.push_back(h->vertex(face[k])->info());
                     }
+					cellids.push_back(h->info());
                 }
             }
         }
@@ -520,14 +522,17 @@ CGALTriangulation<TKernel>::cutMesh(const std::array<double, 4>& plane, Eigen::M
         V(i, 2) = tris[i][2];
     }
     
-     for(int i = 0; i < tris.size() / 3; ++i)
-     {
-         F(i, 0) = 3 * i;
-         F(i, 1) = 3 * i + 2;
-         F(i, 2) = 3 * i + 1;
-     }
+    for(int i = 0; i < tris.size() / 3; ++i)
+    {
+        F(i, 0) = 3 * i;
+        F(i, 1) = 3 * i + 2;
+        F(i, 2) = 3 * i + 1;
+    }
+	std::vector<std::vector<int>> returnvec;
+	returnvec.push_back(ids);
+	returnvec.push_back(cellids);
     
-    return ids;
+    return returnvec;
 }
 
 template<class TKernel>
@@ -850,4 +855,21 @@ CGALTriangulation<TKernel>::umbrellaLaplacian(Eigen::SparseMatrix<double>& L)
     
     L.resize(cnt, cnt);
     L.setFromTriplets(triplets.begin(), triplets.end());
+}
+
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::fillMinAnglePerCell(Eigen::VectorXd &V) {
+
+	V.resize(mesh.number_of_finite_cells());
+
+    for(auto h : mesh.finite_cell_handles())
+    {
+        const int cid = h->info();
+        const double vol = mesh.tetrahedron(h).volume();
+		V(cid) = vol;
+
+	}
+	std::cout << std::endl;
 }
