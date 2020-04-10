@@ -395,8 +395,6 @@ int main(int argc, char *argv[])
     viewer.plugins.push_back(&menu);
     
     // Customize the menu
-    int cutMeshId = -1;
-    int isoMeshId = -1;
     float iso = 0.5f;
     bool orientation = false;
     double offset = 0.0;
@@ -431,7 +429,7 @@ int main(int argc, char *argv[])
 			if (oldmetric != metric_shown){
 				facecolors.resize(faceids.size(), 3);
 				for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
-				viewer.data(cutMeshId).set_colors(facecolors);
+				viewer.data().set_colors(facecolors);
 			}
 		}
         
@@ -460,12 +458,12 @@ int main(int argc, char *argv[])
                 
                 if(ids.size())
                 {
-                    viewer.data(cutMeshId).clear();
-                    viewer.data(cutMeshId).set_mesh(V, F);
+                    viewer.data().clear();
+                    viewer.data().set_mesh(V, F);
 
 					facecolors.resize(faceids.size(), 3);
 					for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
-					viewer.data(cutMeshId).set_colors(facecolors);
+					viewer.data().set_colors(facecolors);
                     //viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
                     //viewer.data(cutMeshId).show_texture = 1;
 					/*
@@ -495,36 +493,6 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        
-		/*
-        if (ImGui::CollapsingHeader("Iso surface", ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            if(ImGui::SliderFloat("iso value", &iso, 0.f, 1.f, "%.4f") || ImGui::Checkbox("orientation", &orientation) )
-            {
-                Eigen::MatrixXd Vi;
-                Eigen::MatrixXi Fi;
-                
-                tri.marchingTets(x, Vi, Fi, iso);
-                
-                if(orientation)
-                {
-                    for(int i = 0; i < Fi.rows(); ++i)
-                        std::swap(Fi(i, 1), Fi(i, 2));
-                }
-                
-                viewer.data(isoMeshId).clear();
-                viewer.data(isoMeshId).set_mesh(Vi, Fi);
-                viewer.data(isoMeshId).uniform_colors(ambient, diffuse, specular);
-
-				//viewer.data(isoMeshId).show_labels = true;
-            }
-            
-            if(ImGui::Button("clear iso surface"))
-            {
-                viewer.data(isoMeshId).clear();
-            }
-        }
-		*/
     };
     
     
@@ -540,8 +508,6 @@ int main(int argc, char *argv[])
 	}
 	*/
 
-    //viewer.data().show_texture = 1;
-	//viewer.data().show_labels = true;
     //viewer.data().uniform_colors(ambient, diffuse, specular);
     //viewer.data().show_texture = 1;
 	/*
@@ -549,9 +515,6 @@ int main(int argc, char *argv[])
     Eigen::MatrixXd UV(V.rows(), 2);
     viewer.data().set_uv(UV.setZero());
 	*/
-    cutMeshId = viewer.selected_data_index;
-    
-    //isoMeshId = viewer.append_mesh();
     
     viewer.launch();
 }
