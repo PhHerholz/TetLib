@@ -328,7 +328,7 @@ int main(int argc, char *argv[])
 	cell_metrics[volume]=Vol;
 	cell_metrics[minangle]=Minang;
 
-	bool normalize = false;
+	bool normalize = true;
 
 	if (!normalize) {
 		//normalize minangle by 180 deg
@@ -339,7 +339,7 @@ int main(int argc, char *argv[])
 	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[volume], normalize, cellcolors_volume);
 	cellcolors[volume] = cellcolors_volume;
 	Eigen::MatrixXd cellcolors_minangle; 
-	igl::colormap(igl::COLOR_MAP_TYPE_MAGMA, cell_metrics[minangle], normalize, cellcolors_minangle);
+	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[minangle], normalize, cellcolors_minangle);
 	cellcolors[minangle] = cellcolors_minangle;
 
 	Eigen::MatrixXd facecolors;
