@@ -860,18 +860,37 @@ CGALTriangulation<TKernel>::umbrellaLaplacian(Eigen::SparseMatrix<double>& L)
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::calcMinAngleAllCells(Eigen::VectorXd &V) {
+CGALTriangulation<TKernel>::calcMinAngleAllCells(Eigen::VectorXd &A) {
 
-	V.resize(mesh.number_of_finite_cells());
+	A.resize(mesh.number_of_finite_cells());
+	double minangle, angle;
 
     for(auto h : mesh.finite_cell_handles())
     {
+		minangle = std::numeric_limits<double>::max();
+        for(int i = 0; i < 3; ++i)
+        {
+            int face[3]
+            {
+                Triangulation::vertex_triple_index(i, 0),
+                Triangulation::vertex_triple_index(i, 1),
+                Triangulation::vertex_triple_index(i, 2)
+            };
+			//std::cout << "--" << std::endl;
+			for(int j=0; j<3; ++j){
+				angle = CGAL::approximate_dihedral_angle(h->vertex(i)->point(), h->vertex(face[j])->point(), h->vertex(face[(j+1)%3])->point(), h->vertex(face[(j+2)%3])->point());
+				if (angle < minangle) minangle=angle;
+				// approx angle of edge i, face[j]	
+				//std::cout << "(" << i << ", " << face[j] << ")" << std::endl;
+			}
+		}
+
+
         const int cid = h->info();
-        const double vol = mesh.tetrahedron(h).volume();
-		V(cid) = vol;
+		A(cid) = minangle;
 
 	}
-	std::cout << std::endl;
+	//std::cout << std::endl;
 }
 
 template<class TKernel>
