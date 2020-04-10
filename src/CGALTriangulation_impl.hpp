@@ -897,14 +897,88 @@ template<class TKernel>
 void
 CGALTriangulation<TKernel>::calcVolumeAllCells(Eigen::VectorXd &V) {
 
-	V.resize(mesh.number_of_finite_cells());
+    int N = mesh.number_of_finite_cells();
+	V.resize(N);
+	std::cout << "N: " << N << std::endl;
 
     for(auto h : mesh.finite_cell_handles())
     {
         const int cid = h->info();
         const double vol = mesh.tetrahedron(h).volume();
+
 		V(cid) = vol;
 
 	}
 	std::cout << std::endl;
+}
+
+
+// TODO: implement
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  float edge_prob) {
+	
+	unsigned long j;
+	srand( (unsigned)time(NULL) );
+
+	int flipped = 0;
+
+	for (int t; t<try_its; ++t) {
+		std::cout << t+1 << "/" << try_its << std::endl;
+		// don't try for more thatn try_its iterations
+		if (flipped >= num_flips) {
+			break;	
+		}
+		
+		std::default_random_engine generator;
+		std::bernoulli_distribution distribution(edge_prob);
+		if (distribution(generator)) {
+			// try to flip an edge
+			int strt = rand() % mesh.number_of_finite_edges();
+			bool flipped_edge = false;
+			int e = 0;
+			for (auto a: mesh.finite_edges()) {
+				if(e >= strt) {
+					if(mesh.flip(a)) {
+						std::cout << "Performed Edgeflip (0)" << std::endl;
+						++flipped;
+						flipped_edge = true;
+						break;
+					}
+				}
+				++e;
+			}
+
+			if(flipped_edge) {
+				continue;	
+			} else {
+				e = 0;
+				for (auto a: mesh.finite_edges()) {
+					if(e < strt) {
+						if(mesh.flip(a)) {
+							std::cout << "Performed Edgeflip (1)" << std::endl;
+							++flipped;
+							break;
+						}
+					}
+					++e;
+				}
+			
+			}
+			
+
+
+		
+		} 
+		//TODO: else: flip vertex
+	
+	}
+
+	// reset vertex ids (old ones are no longer valid)
+	std::cout << "WARNING: RESET VERTEX IDS" << std::endl;
+	int cnt = 0;
+    for(auto h : mesh.finite_cell_handles()) {
+        h->info() = cnt++;
+    }
+
 }

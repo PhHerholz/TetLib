@@ -22,6 +22,7 @@ public:
     typedef typename TKernel::Point_3 Point;
     typedef typename TKernel::Vector_3 Vector;
     typedef typename Triangulation::Vertex_handle Vertex_handle;
+    typedef typename Triangulation::Finite_edges_iterator Finite_edges_iterator;
     
     // actual data is represented here
     Triangulation mesh;
@@ -88,6 +89,10 @@ public:
 	calcMinAngleAllCells(Eigen::VectorXd &V);
 	void
 	calcVolumeAllCells(Eigen::VectorXd &V);
+
+	
+	void
+	performRandomFlips(int num_flips, int try_its, float edge_prob);
     
     // find a vertex that is close to the mean of all others
     int

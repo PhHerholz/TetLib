@@ -187,26 +187,7 @@ tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=30, int n_orbit
 	std::cout << "...done" << std::endl;
 
 
-	/*
 	// OPTIMIZE
-	std::cout << "Step 2: optimize" << std::endl;
-    opts = string("");
-	std::string qstring = string("");
-	if (q_maxre > 0 || q_minda > 0) 
-		qstring += "q";
-		if (q_maxre > 0) {
-			qstring += to_string(q_maxre);
-		}
-		qstring += 
-		if (q_minda < 0) {
-			qs	
-		}
-		
-		
-		, float a_val=-1, int Oops=-1, int Olevel=-1
-	*/
-    //opts = string("");
-	//string("rq1.1/20"); //string("q1.414a") + to_string(area);
 	opts= "r" + tetgenoptstring;
     settings.parse_commandline((char*)opts.c_str());
     //settings.quiet = 1;
@@ -300,10 +281,8 @@ int main(int argc, char *argv[])
 {
     CGALTriangulation<Kernel> tri;
     
-	int mode = 0; 
 	// sphere generation options (with default values)
 	std::string tetgenoptstring    =  "";
-	std::string tetgentriangstring =  "";
 	int n_samples          = 100;
 	int n_orbitpoints      =   5; 
 	if (argc >= 2) {
@@ -312,17 +291,12 @@ int main(int argc, char *argv[])
 			n_orbitpoints = atoi(argv[2]);
 			if (argc >= 4) {
 				tetgenoptstring = argv[3];
-				if (argc >= 5) {
-					tetgentriangstring = argv[4];
-					if (argc >= 6) {
-						mode = atoi(argv[5]);
-					}
-				}
 			}
 		}
 	}
 	
 	std::cout << "START" << std::endl;
+	int mode = 0; 
 	if (mode == 0){
 		// SPHERE
 		tetgenMeshSphere(tri, n_samples, n_orbitpoints, tetgenoptstring);
@@ -330,11 +304,19 @@ int main(int argc, char *argv[])
 		// POLYHEDRON
 		CGALPolyhedron<Kernel> p;
 		p.load("../data/bunny.off");
+		std::string tetgentriangstring =  "";
 		tetgenMeshPolyhedron(p, tri, tetgentriangstring, tetgenoptstring);
 	}
 	std::cout << "Finished tetgen" << std::endl;
 
-	std::cout << "Metrix" << std::endl;
+	std::cout << "Try random flips " << std::endl;
+	//tri.performRandomFlips(10, 100, 1.);
+
+	for (auto h: tri.mesh.finite_cell_handles()) {
+		std::cout << h->info() << " " << std::endl;	
+	}
+
+	std::cout << "Calc metrics" << std::endl;
 	enum Metric {minangle=0, volume};
 	Metric metric_shown = minangle;
 	std::map<Metric, Eigen::VectorXd> cell_metrics;
@@ -346,11 +328,18 @@ int main(int argc, char *argv[])
 	cell_metrics[volume]=Vol;
 	cell_metrics[minangle]=Minang;
 
+	bool normalize = false;
+
+	if (!normalize) {
+		//normalize minangle by 180 deg
+		for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = 1 - cell_metrics[minangle][i] / 180.;
+	}
+
 	Eigen::MatrixXd cellcolors_volume; 
-	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[volume], true, cellcolors_volume);
+	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[volume], normalize, cellcolors_volume);
 	cellcolors[volume] = cellcolors_volume;
 	Eigen::MatrixXd cellcolors_minangle; 
-	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[minangle], true, cellcolors_minangle);
+	igl::colormap(igl::COLOR_MAP_TYPE_MAGMA, cell_metrics[minangle], normalize, cellcolors_minangle);
 	cellcolors[minangle] = cellcolors_minangle;
 
 	Eigen::MatrixXd facecolors;
@@ -515,6 +504,7 @@ int main(int argc, char *argv[])
     Eigen::MatrixXd UV(V.rows(), 2);
     viewer.data().set_uv(UV.setZero());
 	*/
+    
     
     viewer.launch();
 }
