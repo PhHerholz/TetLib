@@ -334,12 +334,24 @@ int main(int argc, char *argv[])
 	}
 	std::cout << "Finished tetgen" << std::endl;
 
-	std::cout << "VOLUME" << std::endl;
-	Eigen::VectorXd vols; 
-	tri.calcVolumeAllCells(vols);
+	std::cout << "Metrix" << std::endl;
+	enum Metric {minangle=0, volume};
+	Metric metric_shown = minangle;
+	std::map<Metric, Eigen::VectorXd> cell_metrics;
+	std::map<Metric, Eigen::MatrixXd> cellcolors;
 
-	Eigen::MatrixXd cellcolors; 
-	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, vols, true, cellcolors);
+	Eigen::VectorXd Vol, Minang; 
+	tri.calcVolumeAllCells(Vol);
+	tri.calcMinAngleAllCells(Minang);
+	cell_metrics[volume]=Vol;
+	cell_metrics[minangle]=Minang;
+
+	Eigen::MatrixXd cellcolors_volume; 
+	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[volume], true, cellcolors_volume);
+	cellcolors[volume] = cellcolors_volume;
+	Eigen::MatrixXd cellcolors_minangle; 
+	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[minangle], true, cellcolors_minangle);
+	cellcolors[minangle] = cellcolors_minangle;
 
 	Eigen::MatrixXd facecolors;
 
@@ -368,10 +380,7 @@ int main(int argc, char *argv[])
 	std::vector<int>  ids     = cmreturn[0];
 	std::vector<int>  faceids = cmreturn[1];
 	facecolors.resize(faceids.size(), 3);
-
-	//std::cout << "Faceids: ";
-	//for (int i; i < faceids.size(); i++) std::cout << faceids[i] << " " << std::endl;
-	for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors.row(faceids[i]);
+	for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
     
     // Style
     Eigen::Vector3d ambient(.1,.1,.1);
@@ -392,12 +401,39 @@ int main(int argc, char *argv[])
     bool orientation = false;
     double offset = 0.0;
     int dir = 0;
+
+	Metric metric = minangle;
+	static bool showValues = false;
     
     // Add content to the default menu window
     menu.callback_draw_viewer_menu = [&]()
     {
         // Draw parent menu content
         //   menu.draw_viewer_menu();
+		
+        if (ImGui::CollapsingHeader("Presentation", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+			Metric oldmetric = metric_shown;
+            ImGui::Combo("Metric", (int *)(&metric_shown), "MinAngle\0Volume\0\0");
+
+			/*
+			if(ImGui::Checkbox("Show Metric Values", &showValues)) {
+				for(int i = 0; i < F.rows(); ++i) {
+					const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
+					viewer.data().add_label(FaceCenter,std::to_string(cell_metrics[metric][faceids[i]]));
+				}
+			} 
+			*/
+			//else {
+			//	viewer.data().clear_labels();	
+			//}
+
+			if (oldmetric != metric_shown){
+				facecolors.resize(faceids.size(), 3);
+				for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+				viewer.data(cutMeshId).set_colors(facecolors);
+			}
+		}
         
         // Add new group
         if (ImGui::CollapsingHeader("Cut View", ImGuiTreeNodeFlags_DefaultOpen))
@@ -421,25 +457,24 @@ int main(int argc, char *argv[])
                 cmreturn = tri.cutMesh(plane, V, F);
 				ids = cmreturn[0];
 				faceids = cmreturn[1];
-				facecolors.resize(faceids.size(), 3);
-				//std::cout << "Faceids: ";
-				//for (int i; i < faceids.size(); i++) std::cout << faceids[i] << " ";
-				//std::cout << std::endl;
-				for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors.row(faceids[i]);
                 
                 if(ids.size())
                 {
                     viewer.data(cutMeshId).clear();
                     viewer.data(cutMeshId).set_mesh(V, F);
+
+					facecolors.resize(faceids.size(), 3);
+					for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 					viewer.data(cutMeshId).set_colors(facecolors);
                     //viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
                     //viewer.data(cutMeshId).show_texture = 1;
-					
-					/* ADD LABELS FOR DEBUGGIN
-					for(int i = 0; i < F.rows(); ++i) {
-						const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
-						viewer.data(cutMeshId).add_label(FaceCenter,std::to_string(faceids[i]));
-					}
+					/*
+					if (showValues) {	
+						for(int i = 0; i < F.rows(); ++i) {
+							const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
+							viewer.data().add_label(FaceCenter,std::to_string(cell_metrics[metric][faceids[i]]));
+						}
+					} 
 					*/
                     
                     Eigen::VectorXd x2(ids.size());
@@ -461,7 +496,7 @@ int main(int argc, char *argv[])
             }
         }
         
-        
+		/*
         if (ImGui::CollapsingHeader("Iso surface", ImGuiTreeNodeFlags_DefaultOpen))
         {
             if(ImGui::SliderFloat("iso value", &iso, 0.f, 1.f, "%.4f") || ImGui::Checkbox("orientation", &orientation) )
@@ -489,6 +524,7 @@ int main(int argc, char *argv[])
                 viewer.data(isoMeshId).clear();
             }
         }
+		*/
     };
     
     
@@ -515,7 +551,7 @@ int main(int argc, char *argv[])
 	*/
     cutMeshId = viewer.selected_data_index;
     
-    isoMeshId = viewer.append_mesh();
+    //isoMeshId = viewer.append_mesh();
     
     viewer.launch();
 }
