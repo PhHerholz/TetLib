@@ -336,21 +336,22 @@ int main(int argc, char *argv[])
 
 	std::cout << "VOLUME" << std::endl;
 	Eigen::VectorXd vols; 
-	tri.fillMinAnglePerCell(vols);
+	tri.calcVolumeAllCells(vols);
 
-	std::cout << vols.size() << std::endl;
 	Eigen::MatrixXd cellcolors; 
-	igl::colormap(igl::COLOR_MAP_TYPE_JET, vols, true, cellcolors);
-	std::cout << cellcolors << std::endl;
+	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, vols, true, cellcolors);
 
 	Eigen::MatrixXd facecolors;
 
     typedef CGALTriangulation<Kernel>::Point Point;
     Point origin = Point(0., 0., 0.);
+
+	/*
     for (auto a: tri.mesh.finite_vertex_handles()) {
         int v_ind = a->info();
 		std::cout << sqrt(CGAL::squared_distance(origin, a->point())) << std::endl;
 	}
+	*/
 
     Eigen::MatrixXd x;
     x.resize(tri.mesh.number_of_vertices(), 1);
@@ -367,6 +368,9 @@ int main(int argc, char *argv[])
 	std::vector<int>  ids     = cmreturn[0];
 	std::vector<int>  faceids = cmreturn[1];
 	facecolors.resize(faceids.size(), 3);
+
+	//std::cout << "Faceids: ";
+	//for (int i; i < faceids.size(); i++) std::cout << faceids[i] << " " << std::endl;
 	for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors.row(faceids[i]);
     
     // Style
@@ -418,6 +422,9 @@ int main(int argc, char *argv[])
 				ids = cmreturn[0];
 				faceids = cmreturn[1];
 				facecolors.resize(faceids.size(), 3);
+				//std::cout << "Faceids: ";
+				//for (int i; i < faceids.size(); i++) std::cout << faceids[i] << " ";
+				//std::cout << std::endl;
 				for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors.row(faceids[i]);
                 
                 if(ids.size())
@@ -427,6 +434,13 @@ int main(int argc, char *argv[])
 					viewer.data(cutMeshId).set_colors(facecolors);
                     //viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
                     //viewer.data(cutMeshId).show_texture = 1;
+					
+					/* ADD LABELS FOR DEBUGGIN
+					for(int i = 0; i < F.rows(); ++i) {
+						const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
+						viewer.data(cutMeshId).add_label(FaceCenter,std::to_string(faceids[i]));
+					}
+					*/
                     
                     Eigen::VectorXd x2(ids.size());
                     
@@ -466,6 +480,8 @@ int main(int argc, char *argv[])
                 viewer.data(isoMeshId).clear();
                 viewer.data(isoMeshId).set_mesh(Vi, Fi);
                 viewer.data(isoMeshId).uniform_colors(ambient, diffuse, specular);
+
+				//viewer.data(isoMeshId).show_labels = true;
             }
             
             if(ImGui::Button("clear iso surface"))
@@ -480,6 +496,16 @@ int main(int argc, char *argv[])
     viewer.data().set_mesh(V, F);
 	viewer.data().set_colors(facecolors);
     viewer.core().background_color.setOnes();
+
+	/* Add labels for debugging
+	for(int i = 0; i < F.rows(); ++i) {
+		const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
+		viewer.data().add_label(FaceCenter,std::to_string(faceids[i]));
+	}
+	*/
+
+    //viewer.data().show_texture = 1;
+	//viewer.data().show_labels = true;
     //viewer.data().uniform_colors(ambient, diffuse, specular);
     //viewer.data().show_texture = 1;
 	/*

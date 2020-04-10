@@ -83,8 +83,11 @@ public:
     std::vector<double>
     tetrahedraVolumes();
 
+	// retrieve some mesh metrics for each cell
 	void
-	fillMinAnglePerCell(Eigen::VectorXd &V);
+	calcMinAngleAllCells(Eigen::VectorXd &V);
+	void
+	calcVolumeAllCells(Eigen::VectorXd &V);
     
     // find a vertex that is close to the mean of all others
     int

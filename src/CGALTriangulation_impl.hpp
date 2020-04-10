@@ -860,7 +860,23 @@ CGALTriangulation<TKernel>::umbrellaLaplacian(Eigen::SparseMatrix<double>& L)
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::fillMinAnglePerCell(Eigen::VectorXd &V) {
+CGALTriangulation<TKernel>::calcMinAngleAllCells(Eigen::VectorXd &V) {
+
+	V.resize(mesh.number_of_finite_cells());
+
+    for(auto h : mesh.finite_cell_handles())
+    {
+        const int cid = h->info();
+        const double vol = mesh.tetrahedron(h).volume();
+		V(cid) = vol;
+
+	}
+	std::cout << std::endl;
+}
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::calcVolumeAllCells(Eigen::VectorXd &V) {
 
 	V.resize(mesh.number_of_finite_cells());
 
