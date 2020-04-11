@@ -917,23 +917,25 @@ CGALTriangulation<TKernel>::calcVolumeAllCells(Eigen::VectorXd &V) {
 // WARNING: this method resets the cell indices.
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  float edge_prob) {
+CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  double edge_prob) {
 	
 	unsigned long j;
 	srand( (unsigned)time(NULL) );
+	std::random_device rd{}; // use to seed the rng 
+    std::mt19937 rng{rd()}; // rng
+	std::bernoulli_distribution distribution(edge_prob);
 
 	int flipped = 0;
 
-	for (int t; t<try_its; ++t) {
-		std::cout << t+1 << "/" << try_its << std::endl;
-		// don't try for more thatn try_its iterations
+	std::cout << "try to perform " << num_flips << " flips (edge prob " << edge_prob << ")" << std::endl;
+
+	for (int t=0; t<try_its; ++t) {
+		// don't try for more than try_its iterations
 		if (flipped >= num_flips) {
 			break;	
 		}
-		
-		std::default_random_engine generator;
-		std::bernoulli_distribution distribution(edge_prob);
-		if (distribution(generator)) {
+		//std::cout << t+1 << "/" << try_its << std::endl;
+		if (distribution(rng)) {
 			// try to flip an edge
 			int strt = rand() % mesh.number_of_finite_edges();
 			bool flipped_edge = false;
@@ -941,7 +943,7 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  floa
 			for (auto a: mesh.finite_edges()) {
 				if(e >= strt) {
 					if(mesh.flip(a)) {
-						std::cout << "Performed Edgeflip (0)" << std::endl;
+						//std::cout << "Performed Edgeflip (0)" << std::endl;
 						++flipped;
 						flipped_edge = true;
 						break;
@@ -957,7 +959,7 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  floa
 				for (auto a: mesh.finite_edges()) {
 					if(e < strt) {
 						if(mesh.flip(a)) {
-							std::cout << "Performed Edgeflip (1)" << std::endl;
+							//std::cout << "Performed Edgeflip (1)" << std::endl;
 							++flipped;
 							break;
 						}
@@ -975,7 +977,7 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  floa
 			for (auto a: mesh.finite_facets()) {
 				if(e >= strt) {
 					if(mesh.flip(a)) {
-						std::cout << "Performed Facetflip (0)" << std::endl;
+						//std::cout << "Performed Facetflip (0)" << std::endl;
 						++flipped;
 						flipped_facet = true;
 						break;
@@ -991,7 +993,7 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  floa
 				for (auto a: mesh.finite_facets()) {
 					if(e < strt) {
 						if(mesh.flip(a)) {
-							std::cout << "Performed Facetflip (1)" << std::endl;
+							//std::cout << "Performed Facetflip (1)" << std::endl;
 							++flipped;
 							break;
 						}
@@ -1002,8 +1004,9 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  floa
 			}
 		}
 	}
-
+	if (flipped < num_flips) {
+		std::cout << "... only managed to perform " << flipped << "flips" << std::endl;
+	}
 	// reset vertex ids (old ones are no longer valid)
-	std::cout << "WARNING: RESET VERTEX IDS" << std::endl;
 	setIndizes();
 }

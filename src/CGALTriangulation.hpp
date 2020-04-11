@@ -94,7 +94,7 @@ public:
 	// performs random flips in the mesh
 	// WARNING: this method resets the cell indices since the cells are changed
 	void
-	performRandomFlips(int num_flips, int try_its, float edge_prob);
+	performRandomFlips(int num_flips, int try_its, double edge_prob);
     
     // find a vertex that is close to the mean of all others
     int

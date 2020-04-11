@@ -283,10 +283,10 @@ int main(int argc, char *argv[])
     
 	// sphere generation options (with default values)
 	std::string tetgenoptstring    =  "";
-	int n_samples          = 100;
-	int n_orbitpoints      =   5; 
-	int n_flips            =   0;
-	int edgeprob		   = 0.5; 
+	int n_samples			= 100 ;
+	int n_orbitpoints		=   5 ; 
+	int n_flips				=   0 ;
+	double  edgeprob		=   0.; 
 	if (argc >= 2) {
 		n_samples    = atoi(argv[1]);		
 		if (argc >= 3) {
@@ -297,7 +297,7 @@ int main(int argc, char *argv[])
 				n_flips = atoi(argv[4]);
 				}
 				if (argc>=6) {
-					edgeprob = std::stof(argv[5]);
+					edgeprob = std::stod(argv[5]);
 				}
 			}
 		}
@@ -317,7 +317,7 @@ int main(int argc, char *argv[])
 	}
 	std::cout << "Finished tetgen" << std::endl;
 
-	std::cout << "Try random flips " << std::endl;
+	std::cout << "... perform flips " << std::endl;
 	tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 
 	std::cout << "Calc metrics" << std::endl;
@@ -332,18 +332,17 @@ int main(int argc, char *argv[])
 	cell_metrics[volume]=Vol;
 	cell_metrics[minangle]=Minang;
 
-	bool normalize = true;
-
+	bool normalize = false;
 	if (!normalize) {
 		//normalize minangle by 180 deg
-		for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = 1 - cell_metrics[minangle][i] / 180.;
+		for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = cell_metrics[minangle][i] / 70.5;
 	}
 
 	Eigen::MatrixXd cellcolors_volume; 
-	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[volume], normalize, cellcolors_volume);
+	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[volume], normalize, cellcolors_volume);
 	cellcolors[volume] = cellcolors_volume;
 	Eigen::MatrixXd cellcolors_minangle; 
-	igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, cell_metrics[minangle], normalize, cellcolors_minangle);
+	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[minangle], normalize, cellcolors_minangle);
 	cellcolors[minangle] = cellcolors_minangle;
 
 	Eigen::MatrixXd facecolors;
