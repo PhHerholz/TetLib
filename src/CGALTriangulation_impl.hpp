@@ -921,9 +921,9 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  doub
 	
 	unsigned long j;
 	srand( (unsigned)time(NULL) );
-	//std::random_device rd{}; // use to seed the rng
-    //std::mt19937 rng{rd()}; // rng
-	//std::bernoulli_distribution distribution(edge_prob);
+	std::random_device rd{}; // use to seed the rng
+    std::mt19937 rng{rd()}; // rng
+	std::bernoulli_distribution distribution(edge_prob);
 
 	int flipped = 0;
 
@@ -935,9 +935,8 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  doub
 			break;	
 		}
 		//std::cout << t+1 << "/" << try_its << std::endl;
-		//if (distribution(rng)) {
-		if(rand() % 2)
-        {
+		if (distribution(rng)) {
+		//if(rand() % 2) {
             // try to flip an edge
 			int strt = rand() % mesh.number_of_finite_edges();
 			bool flipped_edge = false;

@@ -12,6 +12,7 @@
 #include "IndexedTetMesh.hpp"
 #include "CGALTriangulation.hpp"
 #include "Timer.hpp"
+#include "implicit_functions.h"
 
 #include <unordered_map>
 
@@ -95,6 +96,19 @@ sphere_function (const typename TKernel::Point_3& p)
 { return CGAL::squared_distance(p, typename TKernel::Point_3(CGAL::ORIGIN))-1; }
 
 
+double tf (double x, double y, double z) {
+  double x2=x*x, y2=y*y, z2=z*z;
+  double x4=x2*x2, y4=y2*y2, z4=z2*z2;
+
+  return x4  + y4  + z4  + 2 *x2*  y2  + 2*
+    x2*z2  + 2*y2*  z2  - 5 *x2  + 4* y2  - 5*z2+4;
+}
+
+template<class TKernel>
+typename TKernel::FT
+torus_fun (const typename TKernel::Point_3& p)
+{ return tf(p.x(), p.y(), p.z());}
+
 template<class TKernel>
 void 
 meshSphere(IndexedTetMesh& indexed, const double cellSize)
@@ -112,8 +126,8 @@ meshSphere(IndexedTetMesh& indexed, const double cellSize)
     typedef typename CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
     
 	//Mesh domain (sphere)
-	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain(sphere_function<TKernel>,
-                                             typename TKernel::Sphere_3(CGAL::ORIGIN, 2.));
+	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain(torus_fun<TKernel>,
+                                             typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.));
 	// Mesh criteria
 	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=2, cell_size=0.1);
   
