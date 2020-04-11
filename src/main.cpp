@@ -309,7 +309,7 @@ int main(int argc, char *argv[])
 		// TETGEN
 		tetgenMeshSphere(tri, n_samples, n_orbitpoints, tetgenoptstring);
 	} else {
-		// CGAL
+		// CGAL  
 		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri, 0.001);
 	}
 	std::cout << "Finished Sphere Creation (" << mode << ")" << std::endl;

@@ -117,7 +117,7 @@ meshSphere(IndexedTetMesh& indexed, const double cellSize)
 	// Mesh criteria
 	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=2, cell_size=0.1);
   
-	// Mesh generation
+	// Mesh generation 
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria);
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
