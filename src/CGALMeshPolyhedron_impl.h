@@ -91,8 +91,9 @@ meshPolyhedron(const TPolyhedron& p, CGALTriangulation<TKernel>& tri, const doub
 
 template<class TKernel>
 typename TKernel::FT
-sphere_function (const typename TKernel::Point& p)
-{ return CGAL::squared_distance(p, typename TKernel::Point(CGAL::ORIGIN))-1; }
+sphere_function (const typename TKernel::Point_3& p)
+{ return CGAL::squared_distance(p, typename TKernel::Point_3(CGAL::ORIGIN))-1; }
+
 
 template<class TKernel>
 void 
@@ -111,7 +112,7 @@ meshSphere(IndexedTetMesh& indexed, const double cellSize)
     typedef typename CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
     
 	//Mesh domain (sphere)
-	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain(sphere_function,
+	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain(sphere_function<TKernel>,
                                              typename TKernel::Sphere_3(CGAL::ORIGIN, 2.));
 	// Mesh criteria
 	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=2, cell_size=0.1);
@@ -122,12 +123,12 @@ meshSphere(IndexedTetMesh& indexed, const double cellSize)
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
 }
 
-template<class TKernel>
+template<class TKernel2, class TKernel>
 void
 meshSphere(CGALTriangulation<TKernel>& tri, const double cellSize)
 {
     IndexedTetMesh indexed;
-    meshSphere<TKernel>(indexed, cellSize);
+    meshSphere<TKernel2>(indexed, cellSize);
     indexed.convert(tri);
 }
 

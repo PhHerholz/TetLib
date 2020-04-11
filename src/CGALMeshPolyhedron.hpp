@@ -18,7 +18,7 @@ template<class TKernel>
 void
 meshSphere(IndexedTetMesh& indexed, const double cellSize = 0.05);
 
-template<class TKernel>
+template<class TKernel2, class TKernel>
 void
 meshSphere(CGALTriangulation<TKernel>& tri, const double cellSize = 0.05);
 
