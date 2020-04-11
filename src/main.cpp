@@ -304,21 +304,18 @@ int main(int argc, char *argv[])
 	}
 	
 	std::cout << "START" << std::endl;
-	int mode = 0; 
-	if (mode == 0){
-		// SPHERE
+	std::string mode = "cgal"; 
+	if (mode == "tetgen"){
+		// TETGEN
 		tetgenMeshSphere(tri, n_samples, n_orbitpoints, tetgenoptstring);
 	} else {
-		// POLYHEDRON
-		CGALPolyhedron<Kernel> p;
-		p.load("../data/bunny.off");
-		std::string tetgentriangstring =  "";
-		tetgenMeshPolyhedron(p, tri, tetgentriangstring, tetgenoptstring);
+		// CGAL
+		meshSphere(tri, 0.001);
 	}
-	std::cout << "Finished tetgen" << std::endl;
+	std::cout << "Finished Sphere Creation (" << mode << ")" << std::endl;
 
-	std::cout << "... perform flips " << std::endl;
-	tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
+	//std::cout << "... perform flips " << std::endl;
+	//tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 
 	std::cout << "Calc metrics" << std::endl;
 	enum Metric {minangle=0, volume};
