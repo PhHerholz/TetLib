@@ -914,6 +914,7 @@ CGALTriangulation<TKernel>::calcVolumeAllCells(Eigen::VectorXd &V) {
 
 
 // TODO: implement
+// WARNING: this method resets the cell indices.
 template<class TKernel>
 void
 CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  float edge_prob) {
@@ -965,20 +966,44 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  floa
 				}
 			
 			}
-			
-
-
 		
-		} 
-		//TODO: else: flip vertex
-	
+		} else {
+			// try to flip a facet	
+			int strt = rand() % mesh.number_of_finite_facets();
+			bool flipped_facet = false;
+			int e = 0;
+			for (auto a: mesh.finite_facets()) {
+				if(e >= strt) {
+					if(mesh.flip(a)) {
+						std::cout << "Performed Facetflip (0)" << std::endl;
+						++flipped;
+						flipped_facet = true;
+						break;
+					}
+				}
+				++e;
+			}
+
+			if(flipped_facet) {
+				continue;	
+			} else {
+				e = 0;
+				for (auto a: mesh.finite_facets()) {
+					if(e < strt) {
+						if(mesh.flip(a)) {
+							std::cout << "Performed Facetflip (1)" << std::endl;
+							++flipped;
+							break;
+						}
+					}
+					++e;
+				}
+			
+			}
+		}
 	}
 
 	// reset vertex ids (old ones are no longer valid)
 	std::cout << "WARNING: RESET VERTEX IDS" << std::endl;
-	int cnt = 0;
-    for(auto h : mesh.finite_cell_handles()) {
-        h->info() = cnt++;
-    }
-
+	setIndizes();
 }

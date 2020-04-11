@@ -285,12 +285,20 @@ int main(int argc, char *argv[])
 	std::string tetgenoptstring    =  "";
 	int n_samples          = 100;
 	int n_orbitpoints      =   5; 
+	int n_flips            =   0;
+	int edgeprob		   = 0.5; 
 	if (argc >= 2) {
 		n_samples    = atoi(argv[1]);		
 		if (argc >= 3) {
 			n_orbitpoints = atoi(argv[2]);
 			if (argc >= 4) {
 				tetgenoptstring = argv[3];
+				if (argc>=5) {
+				n_flips = atoi(argv[4]);
+				}
+				if (argc>=6) {
+					edgeprob = std::stof(argv[5]);
+				}
 			}
 		}
 	}
@@ -310,11 +318,7 @@ int main(int argc, char *argv[])
 	std::cout << "Finished tetgen" << std::endl;
 
 	std::cout << "Try random flips " << std::endl;
-	//tri.performRandomFlips(10, 100, 1.);
-
-	for (auto h: tri.mesh.finite_cell_handles()) {
-		std::cout << h->info() << " " << std::endl;	
-	}
+	tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 
 	std::cout << "Calc metrics" << std::endl;
 	enum Metric {minangle=0, volume};
