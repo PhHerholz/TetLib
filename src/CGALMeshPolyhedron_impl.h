@@ -8,11 +8,12 @@
 #include <CGAL/refine_mesh_3.h>
 #include <CGAL/Triangulation_data_structure_3.h>
 #include <CGAL/Labeled_mesh_domain_3.h>
+#include <CGAL/Mesh_domain_with_polyline_features_3.h>
+#include <CGAL/Implicit_to_labeling_function_wrapper.h>
 
 #include "IndexedTetMesh.hpp"
 #include "CGALTriangulation.hpp"
 #include "Timer.hpp"
-#include "implicit_functions.h"
 
 #include <unordered_map>
 
@@ -89,11 +90,85 @@ meshPolyhedron(const TPolyhedron& p, CGALTriangulation<TKernel>& tri, const doub
     indexed.convert(tri);
 }
 
+// ################################### SPHERE #############################################
+#include <Eigen/Dense>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/normal_distribution.hpp>    
+
+/*
+  We need a functor that can pretend it's const,
+  but to be a good random number generator 
+  it needs mutable state.
+*/
+namespace Eigen {
+namespace internal {
+template<typename Scalar> 
+struct scalar_normal_dist_op 
+{
+  static boost::mt19937 rng;    // The uniform pseudo-random algorithm
+  mutable boost::normal_distribution<Scalar> norm;  // The gaussian combinator
+
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_normal_dist_op)
+
+  template<typename Index>
+  inline const Scalar operator() (Index, Index = 0) const { return norm(rng); }
+};
+
+template<typename Scalar> boost::mt19937 scalar_normal_dist_op<Scalar>::rng;
+
+template<typename Scalar>
+struct functor_traits<scalar_normal_dist_op<Scalar> >
+{ enum { Cost = 50 * NumTraits<Scalar>::MulCost, PacketAccess = false, IsRepeatable = false }; };
+} // end namespace internal
+} // end namespace Eigen
+
+/*
+  Draw nn samples from a size-dimensional normal distribution
+  with a specified mean and covariance
+*/
+Eigen::MatrixXd randomPoints(int nn) 
+{
+  int size = 3; // Dimensionality (rows)
+  Eigen::internal::scalar_normal_dist_op<double> randN; // Gaussian functor
+  Eigen::internal::scalar_normal_dist_op<double>::rng.seed(1); // Seed the rng
+
+  // Define mean and covariance of the distribution
+  Eigen::VectorXd mean(size);       
+  Eigen::MatrixXd covar(size,size);
+
+  mean  <<  0,  0, 0;
+  covar <<  1, 0, 0,
+            0, 1, 0,
+            0, 0, 1;
+
+  Eigen::MatrixXd normTransform(size,size);
+
+  Eigen::LLT<Eigen::MatrixXd> cholSolver(covar);
+
+  // We can only use the cholesky decomposition if 
+  // the covariance matrix is symmetric, pos-definite.
+  // But a covariance matrix might be pos-semi-definite.
+  // In that case, we'll go to an EigenSolver
+  if (cholSolver.info()==Eigen::Success) {
+    // Use cholesky solver
+    normTransform = cholSolver.matrixL();
+  } else {
+    // Use eigen solver
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigenSolver(covar);
+    normTransform = eigenSolver.eigenvectors() 
+                   * eigenSolver.eigenvalues().cwiseSqrt().asDiagonal();
+  }
+
+  Eigen::MatrixXd samples = (normTransform 
+                           * Eigen::MatrixXd::NullaryExpr(size,nn,randN)).colwise() 
+                           + mean;
+  return samples;
+}
 
 template<class TKernel>
 typename TKernel::FT
-sphere_function (const typename TKernel::Point_3& p)
-{ return CGAL::squared_distance(p, typename TKernel::Point_3(CGAL::ORIGIN))-1; }
+sphere_function (const typename TKernel::Point_3& p, double rad)
+{ return CGAL::squared_distance(p, typename TKernel::Point_3(CGAL::ORIGIN))-rad*rad; }
 
 
 double tf (double x, double y, double z) {
@@ -111,7 +186,7 @@ torus_fun (const typename TKernel::Point_3& p)
 
 template<class TKernel>
 void 
-meshSphere(IndexedTetMesh& indexed, const double cellSize)
+meshSphere(IndexedTetMesh& indexed, const double cellSize, int n_orbitpoints)
 {
     using namespace CGAL;
     using namespace CGAL::parameters;
@@ -119,15 +194,54 @@ meshSphere(IndexedTetMesh& indexed, const double cellSize)
 	//typedef typename TKernel Kernel;
     typedef typename TKernel::FT FT;
     typedef typename TKernel::Point_3 Point;
-	typedef typename CGAL::Labeled_mesh_domain_3<TKernel> Mesh_domain;
+	//typedef typename CGAL::Labeled_mesh_domain_3<TKernel> Mesh_domain;
+	typedef CGAL::Mesh_domain_with_polyline_features_3< CGAL::Labeled_mesh_domain_3<TKernel> > Mesh_domain;
     typedef typename CGAL::Mesh_triangulation_3<Mesh_domain,CGAL::Default, CGAL::Sequential_tag>::type Tr;
 	typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> C3t3;
     typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> TMesh;
     typedef typename CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
-    
+
+
+	/* typedefs for implicit fun made out of several implicit funs
+	//typedef typename FT_to_point_function_wrapper<FT, Point> Function;
+	typedef typename CGAL::Implicit_multi_domain_to_labeling_function_wrapper<Function> Function_wrapper;
+	typedef typename Function_wrapper::Function_vector Function_vector;
+	*/
+
+	/*
+	// Polyline feature test
+	typedef std::vector<Point>        Polyline_3;
+	typedef std::list<Polyline_3>       Polylines;
+	Polylines polylines (1);
+	Polyline_3& polyline = polylines.front();
+	polyline.push_back(Point(0., 0., 0.));
+    polyline.push_back(Point(0., 0.1, 0.));
+    polyline.push_back(Point(0., 0., 0.1));
+    polyline.push_back(Point(0., 0., 0.));
+	*/
+
+	// add the origin 
+	std::vector<Point> addPoints;
+	addPoints.push_back(Point(0., 0., 0.));
+
+	// add orbit points (on a mini sphere inside the other one)
+	Eigen::MatrixXd orbitpoints = randomPoints(n_orbitpoints);
+	double orbit_height = 0.5;
+	for(int i=0; i< orbitpoints.cols(); i++){
+		double vecnorm = orbitpoints.col(i).norm();
+		addPoints.push_back(Point(orbitpoints(0,i) / vecnorm * orbit_height, 
+								  orbitpoints(1,i) / vecnorm * orbit_height, 
+								  orbitpoints(2,i) / vecnorm * orbit_height));
+	}
+
 	//Mesh domain (sphere)
-	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain(torus_fun<TKernel>,
-                                             typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.));
+	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain( 
+											[](Point p)->double{return sphere_function<TKernel>(p, 1.);}, //torus_fun<TKernel>,
+											typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.));
+
+	//add origin and orbit points as 0-dim features (called corners)
+	domain.add_corners(addPoints.begin(), addPoints.end());
+
 	// Mesh criteria
 	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=2, cell_size=0.1);
   
@@ -139,10 +253,10 @@ meshSphere(IndexedTetMesh& indexed, const double cellSize)
 
 template<class TKernel2, class TKernel>
 void
-meshSphere(CGALTriangulation<TKernel>& tri, const double cellSize)
+meshSphere(CGALTriangulation<TKernel>& tri, const double cellSize, int n_orbitpoints)
 {
     IndexedTetMesh indexed;
-    meshSphere<TKernel2>(indexed, cellSize);
+    meshSphere<TKernel2>(indexed, cellSize, n_orbitpoints);
     indexed.convert(tri);
 }
 

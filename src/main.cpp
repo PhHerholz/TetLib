@@ -34,76 +34,6 @@ typedef CGAL::Simple_cartesian<double> Kernel;
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/normal_distribution.hpp>    
 
-/*
-  We need a functor that can pretend it's const,
-  but to be a good random number generator 
-  it needs mutable state.
-*/
-namespace Eigen {
-namespace internal {
-template<typename Scalar> 
-struct scalar_normal_dist_op 
-{
-  static boost::mt19937 rng;    // The uniform pseudo-random algorithm
-  mutable boost::normal_distribution<Scalar> norm;  // The gaussian combinator
-
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_normal_dist_op)
-
-  template<typename Index>
-  inline const Scalar operator() (Index, Index = 0) const { return norm(rng); }
-};
-
-template<typename Scalar> boost::mt19937 scalar_normal_dist_op<Scalar>::rng;
-
-template<typename Scalar>
-struct functor_traits<scalar_normal_dist_op<Scalar> >
-{ enum { Cost = 50 * NumTraits<Scalar>::MulCost, PacketAccess = false, IsRepeatable = false }; };
-} // end namespace internal
-} // end namespace Eigen
-
-/*
-  Draw nn samples from a size-dimensional normal distribution
-  with a specified mean and covariance
-*/
-Eigen::MatrixXd randomPoints(int nn) 
-{
-  int size = 3; // Dimensionality (rows)
-  Eigen::internal::scalar_normal_dist_op<double> randN; // Gaussian functor
-  Eigen::internal::scalar_normal_dist_op<double>::rng.seed(1); // Seed the rng
-
-  // Define mean and covariance of the distribution
-  Eigen::VectorXd mean(size);       
-  Eigen::MatrixXd covar(size,size);
-
-  mean  <<  0,  0, 0;
-  covar <<  1, 0, 0,
-            0, 1, 0,
-            0, 0, 1;
-
-  Eigen::MatrixXd normTransform(size,size);
-
-  Eigen::LLT<Eigen::MatrixXd> cholSolver(covar);
-
-  // We can only use the cholesky decomposition if 
-  // the covariance matrix is symmetric, pos-definite.
-  // But a covariance matrix might be pos-semi-definite.
-  // In that case, we'll go to an EigenSolver
-  if (cholSolver.info()==Eigen::Success) {
-    // Use cholesky solver
-    normTransform = cholSolver.matrixL();
-  } else {
-    // Use eigen solver
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigenSolver(covar);
-    normTransform = eigenSolver.eigenvectors() 
-                   * eigenSolver.eigenvalues().cwiseSqrt().asDiagonal();
-  }
-
-  Eigen::MatrixXd samples = (normTransform 
-                           * Eigen::MatrixXd::NullaryExpr(size,nn,randN)).colwise() 
-                           + mean;
-  return samples;
-}
-
 void setTexture(const std::string filename, igl::opengl::ViewerData& viewerData)
 {
     static Eigen::Matrix<unsigned char, -1, -1> R, G, B;
@@ -143,8 +73,9 @@ tetgenMeshSphere(CGALTriangulation<Kernel>& tri, int num_samples=30, int n_orbit
 	double orbit_height=.5;
 
 	std::cout << "Generate random samples" << std::endl;
+	// randomPoints method has been moved to CGALMeshPolyhedron
 	Eigen::MatrixXd randomsamples = randomPoints(num_samples);
-	Eigen::MatrixXd orbitpoints = randomPoints(n_orbitpoints);
+	Eigen::MatrixXd orbitpoints   = randomPoints(n_orbitpoints);
     
     tetgenio in, out, out0;
     
@@ -287,6 +218,7 @@ int main(int argc, char *argv[])
 	int n_orbitpoints		=   5 ; 
 	int n_flips				=   0 ;
 	double  edgeprob		=   0.; 
+	/*
 	if (argc >= 2) {
 		n_samples    = atoi(argv[1]);		
 		if (argc >= 3) {
@@ -302,6 +234,15 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	*/
+
+	bool normalize=false;
+	if(argc >= 2){
+		if (argv[1] == "norm") {
+			std::cout << "RRRRRRRRRRRRRRRRRRRRRRRRR" << std::endl;
+		//normalize=true;
+		}
+	}
 	
 	std::cout << "START" << std::endl;
 	std::string mode = "cgal"; 
@@ -310,30 +251,40 @@ int main(int argc, char *argv[])
 		tetgenMeshSphere(tri, n_samples, n_orbitpoints, tetgenoptstring);
 	} else {
 		// CGAL  
-		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri, 0.001);
+		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri, 0.01, 100);
 	}
 	std::cout << "Finished Sphere Creation (" << mode << ")" << std::endl;
+	for (auto v: tri.mesh.finite_vertex_handles()) {
+		std::cout << v->point() << std::endl;
+	}
 
 	//std::cout << "... perform flips " << std::endl;
 	//tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 
 	std::cout << "Calc metrics" << std::endl;
-	enum Metric {minangle=0, volume};
+	enum Metric {minangle=0, amips, volume};
 	Metric metric_shown = minangle;
 	std::map<Metric, Eigen::VectorXd> cell_metrics;
 	std::map<Metric, Eigen::MatrixXd> cellcolors;
 
-	Eigen::VectorXd Vol, Minang; 
+	Eigen::VectorXd Vol, Minang, Amips; 
 	tri.calcVolumeAllCells(Vol);
 	tri.calcMinAngleAllCells(Minang);
+	tri.calcAMIPSAllCells(Amips);
 	cell_metrics[volume]=Vol;
 	cell_metrics[minangle]=Minang;
+	cell_metrics[amips]=Amips;
 
-	bool normalize = false;
+	//std::cout << "AMIPS Scores: " << std::endl;
+	//std::cout << Amips << std::endl;
+
+	double amips_max = 100;
 	if (!normalize) {
 		//normalize minangle by 180 deg
 		for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = cell_metrics[minangle][i] / 70.5;
-	}
+		for (int i=0; i < cell_metrics[amips].size(); i++) cell_metrics[amips][i] = (cell_metrics[amips][i] - 3) / amips_max;
+	} 
+
 
 	Eigen::MatrixXd cellcolors_volume; 
 	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[volume], normalize, cellcolors_volume);
@@ -341,18 +292,15 @@ int main(int argc, char *argv[])
 	Eigen::MatrixXd cellcolors_minangle; 
 	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[minangle], normalize, cellcolors_minangle);
 	cellcolors[minangle] = cellcolors_minangle;
+	Eigen::MatrixXd cellcolors_amips; 
+	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
+	cellcolors[amips] = cellcolors_amips;
+
 
 	Eigen::MatrixXd facecolors;
 
     typedef CGALTriangulation<Kernel>::Point Point;
     Point origin = Point(0., 0., 0.);
-
-	/*
-    for (auto a: tri.mesh.finite_vertex_handles()) {
-        int v_ind = a->info();
-		std::cout << sqrt(CGAL::squared_distance(origin, a->point())) << std::endl;
-	}
-	*/
 
     Eigen::MatrixXd x;
     x.resize(tri.mesh.number_of_vertices(), 1);
@@ -401,7 +349,7 @@ int main(int argc, char *argv[])
         if (ImGui::CollapsingHeader("Presentation", ImGuiTreeNodeFlags_DefaultOpen))
         {
 			Metric oldmetric = metric_shown;
-            ImGui::Combo("Metric", (int *)(&metric_shown), "MinAngle\0Volume\0\0");
+            ImGui::Combo("Metric", (int *)(&metric_shown), "MinAngle\0AMIPS\0Volume\0\0");
 
 			/*
 			if(ImGui::Checkbox("Show Metric Values", &showValues)) {
