@@ -210,25 +210,6 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
     typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> TMesh;
     typedef typename CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 
-
-	/* typedefs for implicit fun made out of several implicit funs
-	//typedef typename FT_to_point_function_wrapper<FT, Point> Function;
-	typedef typename CGAL::Implicit_multi_domain_to_labeling_function_wrapper<Function> Function_wrapper;
-	typedef typename Function_wrapper::Function_vector Function_vector;
-	*/
-
-	/*
-	// Polyline feature test
-	typedef std::vector<Point>        Polyline_3;
-	typedef std::list<Polyline_3>       Polylines;
-	Polylines polylines (1);
-	Polyline_3& polyline = polylines.front();
-	polyline.push_back(Point(0., 0., 0.));
-    polyline.push_back(Point(0., 0.1, 0.));
-    polyline.push_back(Point(0., 0., 0.1));
-    polyline.push_back(Point(0., 0., 0.));
-	*/
-
 	// add the origin 
 	std::vector<Point> addPoints;
 	addPoints.push_back(Point(0., 0., 0.));
