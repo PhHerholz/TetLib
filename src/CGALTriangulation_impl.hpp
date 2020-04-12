@@ -913,6 +913,37 @@ CGALTriangulation<TKernel>::calcVolumeAllCells(Eigen::VectorXd &V) {
 }
 
 
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::calcAMIPSAllCells(Eigen::VectorXd &E) {
+
+    int N = mesh.number_of_finite_cells();
+	E.resize(N);
+
+	Eigen::Matrix3d tet, unittet, J;
+
+	// unit tetrahedron in columns
+	unittet <<	1,     0.5,					  0.5,
+				0, sqrt(3)/2,			sqrt(3)/6,
+				0,       0,		sqrt(2) / sqrt(3);
+
+    for(auto h : mesh.finite_cell_handles())
+    {
+        const int cid = h->info();
+		
+		for(int col=0; col<3; ++col) {
+			tet(0,col) = h->vertex(col+1)->point().x() - h->vertex(0)->point().x();
+			tet(1,col) = h->vertex(col+1)->point().y() - h->vertex(0)->point().y();
+			tet(2,col) = h->vertex(col+1)->point().z() - h->vertex(0)->point().z();
+		}
+
+		J = tet * unittet.inverse();
+		E(cid) = (J.transpose()*J).trace() / J.determinant();
+	}
+}
+
+
+
 // TODO: implement
 // WARNING: this method resets the cell indices.
 template<class TKernel>

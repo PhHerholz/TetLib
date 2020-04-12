@@ -89,6 +89,8 @@ public:
 	calcMinAngleAllCells(Eigen::VectorXd &V);
 	void
 	calcVolumeAllCells(Eigen::VectorXd &V);
+	void
+	calcAMIPSAllCells(Eigen::VectorXd &E);
 
 	
 	// performs random flips in the mesh
