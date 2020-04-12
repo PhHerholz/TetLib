@@ -218,48 +218,52 @@ int main(int argc, char *argv[])
 	int n_orbitpoints		=   5 ; 
 	int n_flips				=   0 ;
 	double  edgeprob		=   0.; 
-	/*
-	if (argc >= 2) {
-		n_samples    = atoi(argv[1]);		
-		if (argc >= 3) {
-			n_orbitpoints = atoi(argv[2]);
-			if (argc >= 4) {
-				tetgenoptstring = argv[3];
-				if (argc>=5) {
-				n_flips = atoi(argv[4]);
-				}
-				if (argc>=6) {
-					edgeprob = std::stod(argv[5]);
-				}
-			}
-		}
-	}
-	*/
-
-	bool normalize=false;
-	if(argc >= 2){
-		if (argv[1] == "norm") {
-			std::cout << "RRRRRRRRRRRRRRRRRRRRRRRRR" << std::endl;
-		//normalize=true;
-		}
-	}
 	
 	std::cout << "START" << std::endl;
+
 	std::string mode = "cgal"; 
 	if (mode == "tetgen"){
 		// TETGEN
+		if (argc >= 2) {
+			n_samples    = atoi(argv[1]);		
+			if (argc >= 3) {
+				n_orbitpoints = atoi(argv[2]);
+				if (argc >= 4) {
+					tetgenoptstring = argv[3];
+					if (argc>=5) {
+					n_flips = atoi(argv[4]);
+					}
+					if (argc>=6) {
+						edgeprob = std::stod(argv[5]);
+					}
+				}
+			}
+		}
 		tetgenMeshSphere(tri, n_samples, n_orbitpoints, tetgenoptstring);
+
 	} else {
 		// CGAL  
-		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri, 0.01, 100);
+
+		meshingOptions mOptions;
+
+		if(argc >= 2){
+			mOptions.n_orbitpoints = atoi(argv[1]);
+			if (argc>=3) {
+				mOptions.cellSize = std::stod(argv[2]);
+			}
+		}
+
+		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 	}
+	/*
 	std::cout << "Finished Sphere Creation (" << mode << ")" << std::endl;
 	for (auto v: tri.mesh.finite_vertex_handles()) {
 		std::cout << v->point() << std::endl;
 	}
+	*/
 
 	//std::cout << "... perform flips " << std::endl;
-	//tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
+	tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 
 	std::cout << "Calc metrics" << std::endl;
 	enum Metric {minangle=0, amips, volume};
@@ -275,9 +279,7 @@ int main(int argc, char *argv[])
 	cell_metrics[minangle]=Minang;
 	cell_metrics[amips]=Amips;
 
-	//std::cout << "AMIPS Scores: " << std::endl;
-	//std::cout << Amips << std::endl;
-
+	bool normalize=false;
 	double amips_max = 100;
 	if (!normalize) {
 		//normalize minangle by 180 deg

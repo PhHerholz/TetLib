@@ -10,17 +10,19 @@ template<class TPolyhedron, class TKernel>
 void
 meshPolyhedron(const TPolyhedron& p, CGALTriangulation<TKernel>& tri, const double cellSize = 0.05);
 
+struct meshingOptions;
+
 template<class TKernel>
 typename TKernel::FT
 sphere_function (const typename TKernel::Point& p);
 
 template<class TKernel>
 void
-meshSphere(IndexedTetMesh& indexed, const double cellSize = 0.05, int n_orbitpoints=10);
+meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions);
 
 template<class TKernel2, class TKernel>
 void 
-meshSphere(CGALTriangulation<TKernel>& tri, const double cellSize = 0.05, int n_orbitpoints=10);
+meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions);
 
 
 #include "CGALMeshPolyhedron_impl.h"

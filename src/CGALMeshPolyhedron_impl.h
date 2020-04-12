@@ -184,9 +184,18 @@ typename TKernel::FT
 torus_fun (const typename TKernel::Point_3& p)
 { return tf(p.x(), p.y(), p.z());}
 
+struct meshingOptions {
+    meshingOptions() : cellSize(0.1), n_orbitpoints(10), opt_lloyd(false), opt_perturb(false), opt_exude(false){}
+	double cellSize;
+	int n_orbitpoints;
+	bool opt_lloyd;
+	bool opt_perturb;
+	bool opt_exude;
+};
+
 template<class TKernel>
 void 
-meshSphere(IndexedTetMesh& indexed, const double cellSize, int n_orbitpoints)
+meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 {
     using namespace CGAL;
     using namespace CGAL::parameters;
@@ -225,7 +234,7 @@ meshSphere(IndexedTetMesh& indexed, const double cellSize, int n_orbitpoints)
 	addPoints.push_back(Point(0., 0., 0.));
 
 	// add orbit points (on a mini sphere inside the other one)
-	Eigen::MatrixXd orbitpoints = randomPoints(n_orbitpoints);
+	Eigen::MatrixXd orbitpoints = randomPoints(mOptions.n_orbitpoints);
 	double orbit_height = 0.5;
 	for(int i=0; i< orbitpoints.cols(); i++){
 		double vecnorm = orbitpoints.col(i).norm();
@@ -243,20 +252,25 @@ meshSphere(IndexedTetMesh& indexed, const double cellSize, int n_orbitpoints)
 	domain.add_corners(addPoints.begin(), addPoints.end());
 
 	// Mesh criteria
-	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=2, cell_size=0.1);
+	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=2, cell_size=mOptions.cellSize);
   
 	// Mesh generation 
-	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria);
+	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, 
+										no_perturb(), no_exude());
+  
+	if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
+	if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
+	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
 }
 
 template<class TKernel2, class TKernel>
 void
-meshSphere(CGALTriangulation<TKernel>& tri, const double cellSize, int n_orbitpoints)
+meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions)
 {
     IndexedTetMesh indexed;
-    meshSphere<TKernel2>(indexed, cellSize, n_orbitpoints);
+    meshSphere<TKernel2>(indexed, mOptions);
     indexed.convert(tri);
 }
 
