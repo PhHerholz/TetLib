@@ -232,62 +232,126 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
   }
 }
 
+bool
+adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &changed_inds, double orbit_dist =.5, double eps=.001) {
+
+	int nv = tri.mesh.number_of_vertices();
+    std::vector<double> dists(nv, 0.);
+	changed_inds.clear();
+
+    typedef CGALTriangulation<Kernel>::Point Point;
+    typedef CGALTriangulation<Kernel>::Cell_handle Cell_handle;
+    Point origin = Point(0., 0., 0.);
+
+    double dist;
+    int minind = 0;
+
+    // Go through all points and set the points that lie in the orbit region to the orbit distance
+    // Also save the index of the point closest to the origin to set it exactly to the origin later
+    for (auto a: tri.mesh.finite_vertex_handles()) {
+        int v_ind = a->info();
+        dist = sqrt(CGAL::squared_distance(origin, a->point()));
+        dists[v_ind] = dist;
+        if (dist <= dists[minind]) minind = v_ind;
+        if (orbit_dist - eps <= dist  && dist < orbit_dist + eps ) {
+            changed_inds.push_back(v_ind);
+            CGALTriangulation<Kernel>::Point normed_p = Point(a->point().x() / dist * orbit_dist, a->point().y() / dist * orbit_dist, a->point().z() / dist * orbit_dist);
+			// check that the move does not flip a cell:
+			std::vector<Cell_handle> oui;
+			tri.mesh.incident_cells(a, std::back_inserter(oui));
+
+			bool allsamesign = true;
+			for (auto c: oui) {
+				Point p[4];
+				int vertex_ind_in_cell = -1;
+				for (int i = 0; i < 4; ++i) {
+					p[i] = c->vertex(i)->point();
+					if (p[i] == a->point()) {
+						vertex_ind_in_cell = i;
+					}
+				}
+				Kernel::FT vpre  = CGAL::volume(p[0], p[1], p[2], p[3]);
+				p[vertex_ind_in_cell] = normed_p;
+				Kernel::FT vpost = CGAL::volume(p[0], p[1], p[2], p[3]);
+
+				bool samesign = (vpre < 0 && vpost < 0) || ( vpre>0 && vpost > 0) || (vpre == 0 && vpost == 0);
+				if (!samesign) allsamesign = false;
+			}
+
+			if (allsamesign) {
+				std::cout << "...move orbitpoint by " << sqrt(CGAL::squared_distance(normed_p, a->point())) << std::endl;
+				a->set_point(normed_p);
+				dists[v_ind] = sqrt(CGAL::squared_distance(origin, a->point()));
+			} else {
+				std::cout << ".....skipped moving an orbitpoint (it would flip a cell)" << std::endl;	
+			}
+        }
+    }
+    int n_orbit_points = changed_inds.size();
+    std::cout << "Found " << n_orbit_points << " orbit points" <<  std::endl;
+	if (n_orbit_points < 1) {
+		std::cout << "Error: orbit eps too small, no points in range, abort" << std::endl;	
+		return false;
+	}
+
+    // Set closest point to (0,0,0) to the origin
+    for (auto a: tri.mesh.finite_vertex_handles()) {
+        int v_ind = a->info();
+        if (v_ind == minind){
+            std::cout << "set point " << a->point() << "to the origin (moved it by " << sqrt(CGAL::squared_distance(origin, a->point())) << ")" << std::endl;
+            a->set_point(origin);
+            dists[v_ind] = sqrt(CGAL::squared_distance(origin, a->point()));
+        }
+    }
+
+    // Make sure none of the orbit points has been set to the origin
+    for (auto o_ind : changed_inds){
+        if (o_ind == minind) {
+            std::cout << "ERROR: an orbit point is in the origin" << std::endl;
+            return false;
+        }
+    }
+
+	//add origin to the orbit inds
+	changed_inds.push_back(minind);
+
+	return true;
+}
+
 
 int main(int argc, char *argv[])
 {
     CGALTriangulation<Kernel> tri;
     
 	// sphere generation options (with default values)
-	std::string tetgenoptstring    =  "";
-	int n_samples			= 100 ;
-	int n_orbitpoints		=   5 ; 
+	int n_orbitpoints		=   -1; 
 	int n_flips				=   0 ;
 	double  edgeprob		=   0.; 
+	double maxPointMove     =   0.001;
 	
 	std::cout << "START" << std::endl;
 
 	std::string FILENAME_base = "";
 	for (int i=0; i < argc-1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
-	std::string mode = "cgal"; 
-	if (mode == "tetgen"){
-		// TETGEN
-		if (argc >= 2) {
-			n_samples    = atoi(argv[1]);		
-			if (argc >= 3) {
-				n_orbitpoints = atoi(argv[2]);
-				if (argc >= 4) {
-					tetgenoptstring = argv[3];
-					if (argc>=5) {
-					n_flips = atoi(argv[4]);
-					}
-					if (argc>=6) {
-						edgeprob = std::stod(argv[5]);
-					}
-				}
-			}
-		}
-		tetgenMeshSphere(tri, n_samples, n_orbitpoints, tetgenoptstring);
-
-	} else {
-		// CGAL  
-
-		meshingOptions mOptions;
-
-		if(argc >= 2){
-			mOptions.n_orbitpoints = atoi(argv[1]);
-			if (argc>=3) {
-				mOptions.cellSize = std::stod(argv[2]);
-				if (argc>=4) {
-					mOptions.cell_radius_edge_ratio = std::stod(argv[3]);
-					if(argc>=5) {
-						n_flips = std::atoi(argv[4]);
-						if(argc>=6) {
-							if (atoi(argv[5])) mOptions.opt_lloyd=true;
-							if(argc>=7) {
-								if (atoi(argv[6])) mOptions.opt_perturb=true;
-								if(argc>=8) {
-									if (atoi(argv[7])) mOptions.opt_exude=true;
+	// CGAL  
+	meshingOptions mOptions;
+	if(argc >= 2){
+		mOptions.n_orbitpoints = -1;  //atoi(argv[1]);
+		if (argc>=3) {
+			mOptions.cellSize = std::stod(argv[2]);
+			if (argc>=4) {
+				mOptions.cell_radius_edge_ratio = std::stod(argv[3]);
+				if(argc>=5) {
+					n_flips = std::atoi(argv[4]);
+					if(argc>=6) {
+							maxPointMove= std::stod(argv[5]);
+						if(argc>=7) {
+							if (atoi(argv[6])) mOptions.opt_lloyd=true;
+							if(argc>=8) {
+								if (atoi(argv[7])) mOptions.opt_perturb=true;
+								if(argc>=9) {
+									if (atoi(argv[8])) mOptions.opt_exude=true;
 								}
 							}
 						}
@@ -295,9 +359,27 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
-
-		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 	}
+
+	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
+
+
+	std::cout << "Finished sphere creation" << std::endl;
+
+	if (n_orbitpoints < 0) {
+		std::cout << "n_orbit points < 0, look for orbit points in small radius and shift them" << std::endl;	
+		std::vector<int> changed_indices;
+
+		if (adjustPointsOriginAndOrbit(tri, changed_indices, .5, maxPointMove)) {
+			std::cout << "changed " << changed_indices.size() << "points" << std::endl;
+		} else {
+			std::cout << "No orbit points found, exit." << std::endl;
+			return EXIT_FAILURE;
+		}
+	
+	}
+
+
 	/*
 	std::cout << "Finished Sphere Creation (" << mode << ")" << std::endl;
 	for (auto v: tri.mesh.finite_vertex_handles()) {

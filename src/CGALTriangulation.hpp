@@ -22,6 +22,7 @@ public:
     typedef typename TKernel::Point_3 Point;
     typedef typename TKernel::Vector_3 Vector;
     typedef typename Triangulation::Vertex_handle Vertex_handle;
+    typedef typename Triangulation::Cell_handle Cell_handle;
     typedef typename Triangulation::Finite_edges_iterator Finite_edges_iterator;
     
     // actual data is represented here
