@@ -185,8 +185,9 @@ torus_fun (const typename TKernel::Point_3& p)
 { return tf(p.x(), p.y(), p.z());}
 
 struct meshingOptions {
-    meshingOptions() : cellSize(0.1), n_orbitpoints(10), opt_lloyd(false), opt_perturb(false), opt_exude(false){}
+    meshingOptions() : cellSize(0.1), cell_radius_edge_ratio(2.), n_orbitpoints(10), opt_lloyd(false), opt_perturb(false), opt_exude(false){}
 	double cellSize;
+	double cell_radius_edge_ratio;
 	int n_orbitpoints;
 	bool opt_lloyd;
 	bool opt_perturb;
@@ -211,8 +212,9 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
     typedef typename CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 
 	// add the origin 
+	Point origin = Point(0., 0., 0.);
 	std::vector<Point> addPoints;
-	addPoints.push_back(Point(0., 0., 0.));
+	addPoints.push_back(origin);
 
 	// add orbit points (on a mini sphere inside the other one)
 	Eigen::MatrixXd orbitpoints = randomPoints(mOptions.n_orbitpoints);
@@ -229,12 +231,47 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 											[](Point p)->double{return sphere_function<TKernel>(p, 1.);}, //torus_fun<TKernel>,
 											typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.));
 
+	/*
+	// adaptive sizing field:
+	// Sizing field
+	struct Spherical_sizing_field
+	{
+	  FT operator()(const Point& p, const int, const typename Mesh_domain::Index&) const
+	  {
+		FT sq_d_to_origin = CGAL::squared_distance(p, Point(-2, -2, -2));
+		return CGAL::abs( CGAL::sqrt(sq_d_to_origin)-0.5 ) / 5. + 0.025; 
+	  }
+	};
+	*/
+	typedef FT (Function)(const Point&);
+
+    // Sizing field
+    struct Spherical_sizing_field
+    {
+        typedef Point Point_3;
+        typedef typename Mesh_domain::Index Index;
+
+        FT operator()(const Point_3& p, const int, const Index&) const
+        {
+            FT sq_d_to_origin = CGAL::squared_distance(p, Point(CGAL::ORIGIN));
+            return CGAL::abs( CGAL::sqrt(sq_d_to_origin)-0.5 ) / 5. + 0.025;
+        }
+    };
+
+	//Spherical_sizing_field cellSize_field;
+
 	//add origin and orbit points as 0-dim features (called corners)
 	domain.add_corners(addPoints.begin(), addPoints.end());
 
+	/*
 	// Mesh criteria
-	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=2, cell_size=mOptions.cellSize);
+	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=cellSize_field); // mOptions.cellSize);
+	*/
+    Spherical_sizing_field size;
+	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025,
+                         cell_radius_edge_ratio=2, cell_size=mOptions.cellSize);
   
+
 	// Mesh generation 
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, 
 										no_perturb(), no_exude());
@@ -244,6 +281,26 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
+
+	/*
+	std::cout << "Looking for the 0d features after opt" << std::endl;
+	int found_addpoints = 0;
+	bool found_origin   = false;
+	for (auto a: indexed.vertices) {
+		for (auto p: addPoints) {
+			if (p.x() == a[0] && p.y() == a[1] && p.z() == a[2]){
+				if (p.x() == 0. && p.y() == 0. and p.z() == 0.) {
+					found_origin=true;
+				} else {
+					++found_addpoints;	
+				}
+			}
+		}
+	}
+	std::cout << "Found " << found_addpoints << "/" << mOptions.n_orbitpoints << " orbitpoints" << std::endl;
+	std::cout << (found_origin?"origin found":"ERROR: origin LOST") << std::endl;
+	*/
+
 }
 
 template<class TKernel2, class TKernel>
