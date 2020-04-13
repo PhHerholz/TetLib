@@ -1,0 +1,61 @@
+import os
+from PIL import Image
+import numpy  as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import argparse
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("folder" )
+args = parser.parse_args()
+
+folder = args.folder
+runs = []
+for name in os.listdir(folder):
+    splt = name.split(".")
+    if splt[-1] == 'csv':
+        runs.append(name.split('metrics.csv')[0])
+
+for i, run in enumerate(runs):
+    print("{}/{}".format(i+1, len(runs)))
+    path_base = os.path.join(folder, run)
+
+    df = pd.read_csv(path_base + "metrics.csv")
+
+    # parse config
+    splt = run.split('_')[:-1]
+    n_orbitpoints = int(splt[0])
+    cellSize = float(splt[1])
+    re_ratio = float(splt[2])
+    use_lloyd = bool(int(splt[3]))
+    use_perturb = bool(int(splt[4]))
+    use_exude = bool(int(splt[5]))
+
+    title_str = "N {}, Cellsize {}, RE Ratio {} {}{}{}".format(n_orbitpoints,
+                                                              cellSize,
+                                                              re_ratio,
+                                                              "+lloyd" if
+                                                              use_lloyd
+                                                              else "",
+                                                              "+perturb" if
+                                                              use_perturb
+                                                              else "",
+                                                              "+exude" if
+                                                              use_exude
+                                                              else "")
+
+
+    rows = len(df.keys())
+    cols = 2
+
+    fig = plt.figure(figsize=(10, 10))
+    plt.suptitle(title_str)
+    for i, (k,v) in enumerate(df.items()):
+        plt.subplot(rows, cols, 1+i*cols)
+        plt.title(k)
+        plt.axis('off')
+        plt.imshow(Image.open(path_base + "{}out.png".format(k)))
+        plt.subplot(rows, cols, 2+i*cols)
+        df[k].hist(bins=200)
+    plt.savefig(path_base + "metric_comparison.png")
