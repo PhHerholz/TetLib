@@ -185,7 +185,7 @@ torus_fun (const typename TKernel::Point_3& p)
 { return tf(p.x(), p.y(), p.z());}
 
 struct meshingOptions {
-    meshingOptions() : cellSize(0.1), cell_radius_edge_ratio(2.), n_orbitpoints(10), opt_lloyd(false), opt_perturb(false), opt_exude(false){}
+    meshingOptions() : cellSize(0.1), cell_radius_edge_ratio(2.), n_orbitpoints(-1), opt_lloyd(false), opt_perturb(false), opt_exude(false){}
 	double cellSize;
 	double cell_radius_edge_ratio;
 	int n_orbitpoints;
@@ -211,19 +211,21 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
     typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> TMesh;
     typedef typename CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 
-	// add the origin 
-	Point origin = Point(0., 0., 0.);
 	std::vector<Point> addPoints;
-	addPoints.push_back(origin);
+	if (mOptions.n_orbitpoints >= 0) {
+		// add the origin 
+		Point origin = Point(0., 0., 0.);
+		addPoints.push_back(origin);
 
-	// add orbit points (on a mini sphere inside the other one)
-	Eigen::MatrixXd orbitpoints = randomPoints(mOptions.n_orbitpoints);
-	double orbit_height = 0.5;
-	for(int i=0; i< orbitpoints.cols(); i++){
-		double vecnorm = orbitpoints.col(i).norm();
-		addPoints.push_back(Point(orbitpoints(0,i) / vecnorm * orbit_height, 
-								  orbitpoints(1,i) / vecnorm * orbit_height, 
-								  orbitpoints(2,i) / vecnorm * orbit_height));
+		// add orbit points (on a mini sphere inside the other one)
+		Eigen::MatrixXd orbitpoints = randomPoints(mOptions.n_orbitpoints);
+		double orbit_height = 0.5;
+		for(int i=0; i< orbitpoints.cols(); i++){
+			double vecnorm = orbitpoints.col(i).norm();
+			addPoints.push_back(Point(orbitpoints(0,i) / vecnorm * orbit_height, 
+									  orbitpoints(1,i) / vecnorm * orbit_height, 
+									  orbitpoints(2,i) / vecnorm * orbit_height));
+		}
 	}
 
 	//Mesh domain (sphere)
@@ -260,8 +262,9 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 
 	//Spherical_sizing_field cellSize_field;
 
+	// negative number of orbit points means not to add the origin eather
 	//add origin and orbit points as 0-dim features (called corners)
-	domain.add_corners(addPoints.begin(), addPoints.end());
+	if (mOptions.n_orbitpoints >= 0) domain.add_corners(addPoints.begin(), addPoints.end());
 
 	/*
 	// Mesh criteria

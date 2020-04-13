@@ -218,10 +218,10 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
   if (key == '1')
   {
     // Allocate temporary buffers
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(1280,800);
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(1280,800);
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> B(1280,800);
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> A(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(4*1280,4*800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(4*1280,4*800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> B(4*1280,4*800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> A(4*1280,4*800);
 
     // Draw the scene in the buffers
     viewer.core().draw_buffer(
@@ -279,13 +279,16 @@ int main(int argc, char *argv[])
 			if (argc>=3) {
 				mOptions.cellSize = std::stod(argv[2]);
 				if (argc>=4) {
-					mOptions.cellSize = std::stod(argv[3]);
+					mOptions.cell_radius_edge_ratio = std::stod(argv[3]);
 					if(argc>=5) {
-						if (atoi(argv[4])) mOptions.opt_lloyd=true;
+						n_flips = std::atoi(argv[4]);
 						if(argc>=6) {
-							if (atoi(argv[5])) mOptions.opt_perturb=true;
+							if (atoi(argv[5])) mOptions.opt_lloyd=true;
 							if(argc>=7) {
-								if (atoi(argv[6])) mOptions.opt_exude=true;
+								if (atoi(argv[6])) mOptions.opt_perturb=true;
+								if(argc>=8) {
+									if (atoi(argv[7])) mOptions.opt_exude=true;
+								}
 							}
 						}
 					}
@@ -324,6 +327,16 @@ int main(int argc, char *argv[])
 	cell_metrics[volume]=Vol;
 	cell_metrics[minangle]=Minang;
 	cell_metrics[amips]=Amips;
+
+	// write values to file
+	std::ofstream feil;
+	feil.open("out/" + FILENAME_base + "metrics.csv");
+	feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << std::endl;
+	for(int i; i < cell_metrics[volume].size(); i++) {
+		feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) << std::endl;
+	}
+	feil.close();
+
 
 	bool normalize=false;
 	double amips_max = 100;
