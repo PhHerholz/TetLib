@@ -2,6 +2,9 @@
 #include <igl/writeOFF.h>
 #include <igl/colormap.h>
 
+#include <igl/png/writePNG.h>
+#include <igl/png/readPNG.h>
+
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
@@ -208,6 +211,28 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     file.close();
 }
 
+std::string FILENAME="";
+
+bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier)
+{
+  if (key == '1')
+  {
+    // Allocate temporary buffers
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> B(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> A(1280,800);
+
+    // Draw the scene in the buffers
+    viewer.core().draw_buffer(
+      viewer.data(),false,R,G,B,A);
+
+    // Save it to a PNG
+    igl::png::writePNG(R,G,B,A, "out/" + FILENAME +  "out.png");
+  }
+}
+
+
 int main(int argc, char *argv[])
 {
     CGALTriangulation<Kernel> tri;
@@ -220,6 +245,9 @@ int main(int argc, char *argv[])
 	double  edgeprob		=   0.; 
 	
 	std::cout << "START" << std::endl;
+
+	std::string FILENAME_base = "";
+	for (int i=0; i < argc-1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
 	std::string mode = "cgal"; 
 	if (mode == "tetgen"){
@@ -250,6 +278,18 @@ int main(int argc, char *argv[])
 			mOptions.n_orbitpoints = atoi(argv[1]);
 			if (argc>=3) {
 				mOptions.cellSize = std::stod(argv[2]);
+				if (argc>=4) {
+					mOptions.cellSize = std::stod(argv[3]);
+					if(argc>=5) {
+						if (atoi(argv[4])) mOptions.opt_lloyd=true;
+						if(argc>=6) {
+							if (atoi(argv[5])) mOptions.opt_perturb=true;
+							if(argc>=7) {
+								if (atoi(argv[6])) mOptions.opt_exude=true;
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -270,6 +310,12 @@ int main(int argc, char *argv[])
 	Metric metric_shown = minangle;
 	std::map<Metric, Eigen::VectorXd> cell_metrics;
 	std::map<Metric, Eigen::MatrixXd> cellcolors;
+	std::map<Metric, std::string> metric_names;
+
+	metric_names[minangle] = "minangle";
+	metric_names[amips] = "amips";
+	metric_names[volume] = "volume";
+	FILENAME = FILENAME_base + metric_names[metric_shown];
 
 	Eigen::VectorXd Vol, Minang, Amips; 
 	tri.calcVolumeAllCells(Vol);
@@ -282,14 +328,15 @@ int main(int argc, char *argv[])
 	bool normalize=false;
 	double amips_max = 100;
 	if (!normalize) {
-		//normalize minangle by 180 deg
+		//normalize minangle by 70.5 deg
 		for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = cell_metrics[minangle][i] / 70.5;
+		// normalize amips using the heuristically chosen max val amips_max and the min value 3
 		for (int i=0; i < cell_metrics[amips].size(); i++) cell_metrics[amips][i] = (cell_metrics[amips][i] - 3) / amips_max;
 	} 
 
 
 	Eigen::MatrixXd cellcolors_volume; 
-	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[volume], normalize, cellcolors_volume);
+	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[volume], true, cellcolors_volume);
 	cellcolors[volume] = cellcolors_volume;
 	Eigen::MatrixXd cellcolors_minangle; 
 	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[minangle], normalize, cellcolors_minangle);
@@ -313,8 +360,10 @@ int main(int argc, char *argv[])
     
     Eigen::MatrixXd V;
     Eigen::MatrixXi F;
+
+    double offset = 0.1;
     
-    std::array<double, 4> plane{1,0,0,100};
+    std::array<double, 4> plane{1,0,0,offset};
 	std::vector<std::vector<int>> cmreturn = tri.cutMesh(plane, V, F);
 	std::vector<int>  ids     = cmreturn[0];
 	std::vector<int>  faceids = cmreturn[1];
@@ -336,7 +385,6 @@ int main(int argc, char *argv[])
     // Customize the menu
     float iso = 0.5f;
     bool orientation = false;
-    double offset = 0.0;
     int dir = 0;
 
 	Metric metric = minangle;
@@ -369,6 +417,8 @@ int main(int argc, char *argv[])
 				facecolors.resize(faceids.size(), 3);
 				for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 				viewer.data().set_colors(facecolors);
+
+				FILENAME = FILENAME_base + metric_names[metric_shown];
 			}
 		}
         
@@ -440,6 +490,8 @@ int main(int argc, char *argv[])
 	viewer.data().set_colors(facecolors);
     viewer.core().background_color.setOnes();
 
+	viewer.callback_key_down = &key_down;
+
 	/* Add labels for debugging
 	for(int i = 0; i < F.rows(); ++i) {
 		const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
@@ -454,7 +506,6 @@ int main(int argc, char *argv[])
     Eigen::MatrixXd UV(V.rows(), 2);
     viewer.data().set_uv(UV.setZero());
 	*/
-    
-    
+
     viewer.launch();
 }
