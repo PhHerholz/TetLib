@@ -11,6 +11,10 @@ parser.add_argument("folder" )
 args = parser.parse_args()
 
 folder = args.folder
+plot_folder = os.path.join(folder, 'plots')
+if not os.path.exists(plot_folder):
+    os.makedirs(plot_folder)
+
 runs = []
 for name in os.listdir(folder):
     splt = name.split(".")
@@ -58,4 +62,5 @@ for i, run in enumerate(runs):
         plt.imshow(Image.open(path_base + "{}out.png".format(k)))
         plt.subplot(rows, cols, 2+i*cols)
         df[k].hist(bins=200)
-    plt.savefig(path_base + "metric_comparison.png")
+    plt.savefig(os.path.join(plot_folder,
+                             "{}_metric_comparison.png".format(run)))
