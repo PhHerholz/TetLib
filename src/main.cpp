@@ -218,10 +218,10 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
   if (key == '1')
   {
     // Allocate temporary buffers
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(4*1280,4*800);
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(4*1280,4*800);
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> B(4*1280,4*800);
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> A(4*1280,4*800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> B(1280,800);
+    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> A(1280,800);
 
     // Draw the scene in the buffers
     viewer.core().draw_buffer(
