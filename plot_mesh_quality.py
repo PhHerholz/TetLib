@@ -32,11 +32,12 @@ for i, run in enumerate(runs):
     n_orbitpoints = int(splt[0])
     cellSize = float(splt[1])
     re_ratio = float(splt[2])
-    use_lloyd = bool(int(splt[3]))
-    use_perturb = bool(int(splt[4]))
-    use_exude = bool(int(splt[5]))
+    n_flips  = int(splt[3])
+    use_lloyd = bool(int(splt[4]))
+    use_perturb = bool(int(splt[5]))
+    use_exude = bool(int(splt[6]))
 
-    title_str = "N {}, Cellsize {}, RE Ratio {} {}{}{}".format(n_orbitpoints,
+    title_str = "N {}, Cellsize {}, RE Ratio {} {}{}{} {}Flips".format(n_orbitpoints,
                                                               cellSize,
                                                               re_ratio,
                                                               "+lloyd" if
@@ -47,7 +48,7 @@ for i, run in enumerate(runs):
                                                               else "",
                                                               "+exude" if
                                                               use_exude
-                                                              else "")
+                                                              else "", n_flips)
 
 
     rows = len(df.keys())
@@ -63,4 +64,4 @@ for i, run in enumerate(runs):
         plt.subplot(rows, cols, 2+i*cols)
         df[k].hist(bins=200)
     plt.savefig(os.path.join(plot_folder,
-                             "{}_metric_comparison.png".format(run)))
+                             "{}_metric_comparison.png".format(run)), dpi=400)
