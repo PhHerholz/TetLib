@@ -254,7 +254,6 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
         dists[v_ind] = dist;
         if (dist <= dists[minind]) minind = v_ind;
         if (orbit_dist - eps <= dist  && dist < orbit_dist + eps ) {
-            changed_inds.push_back(v_ind);
             CGALTriangulation<Kernel>::Point normed_p = Point(a->point().x() / dist * orbit_dist, a->point().y() / dist * orbit_dist, a->point().z() / dist * orbit_dist);
 			// check that the move does not flip a cell:
 			std::vector<Cell_handle> oui;
@@ -282,6 +281,7 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 				std::cout << "...move orbitpoint by " << sqrt(CGAL::squared_distance(normed_p, a->point())) << std::endl;
 				a->set_point(normed_p);
 				dists[v_ind] = sqrt(CGAL::squared_distance(origin, a->point()));
+				changed_inds.push_back(v_ind);
 			} else {
 				std::cout << ".....skipped moving an orbitpoint (it would flip a cell)" << std::endl;	
 			}
@@ -322,6 +322,7 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 int main(int argc, char *argv[])
 {
     CGALTriangulation<Kernel> tri;
+    typedef CGALTriangulation<Kernel>::Point Point;
     
 	// sphere generation options (with default values)
 	int n_orbitpoints		=   -1; 
@@ -334,7 +335,7 @@ int main(int argc, char *argv[])
 	std::string FILENAME_base = "";
 	for (int i=0; i < argc-1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
-	// CGAL  
+	// tetlib NORBITPOINTS CELLSIZE RTOERATIO NFLIPS MAXPOINTMOVE LLOYD PERTURB EXUDE
 	meshingOptions mOptions;
 	if(argc >= 2){
 		mOptions.n_orbitpoints = -1;  //atoi(argv[1]);
@@ -370,14 +371,62 @@ int main(int argc, char *argv[])
 		std::cout << "n_orbit points < 0, look for orbit points in small radius and shift them" << std::endl;	
 		std::vector<int> changed_indices;
 
+		// write config - orbit points to file
+		std::ofstream cfile;
+		cfile.open("out/" "configs.txt", std::ios_base::app);
+		for (int i=0; i < argc; ++i) cfile << argv[i] << ","; 
+		cfile << std::endl;
+
 		if (adjustPointsOriginAndOrbit(tri, changed_indices, .5, maxPointMove)) {
 			std::cout << "changed " << changed_indices.size() << "points" << std::endl;
+
+			cfile << changed_indices.size()-1 << std::endl;
+			cfile.close();
+
+			FILENAME_base += std::to_string( changed_indices.size() - 1) + "_";
+
 		} else {
 			std::cout << "No orbit points found, exit." << std::endl;
+			cfile << "0" << std::endl;
+			cfile.close();
+
 			return EXIT_FAILURE;
 		}
-	
 	}
+
+	/*
+	if (false) {
+		// TEST WRITEOUT: --------------------------------
+		// - save orbitpoints
+		std::vector<Point> orbitpnts;
+		for (int i : changed_indices){
+			for (auto vh : tri.mesh.finite_vertex_handles()) {
+				if (vh->info() == i) {
+					orbitpnts.push_back(vh->point());
+				}
+			}
+		} 
+
+		// store mesh
+		std::string outfilename = "out/" + FILENAME_base;
+		tri.write(outfilename);
+		CGALTriangulation<Kernel> tri_l;
+		tri_l.load(outfilename);
+		
+		// - compare  orbitpoints
+		int j = 0;
+		for (auto i :changed_indices){
+			for (auto vh : tri_l.mesh.finite_vertex_handles()) {
+				if (vh->info() == i) {
+					std::cout << vh->point() == orbitpnts[j] << std::endl;
+					j++;
+				}
+			}
+		} 
+		
+		// -----------------------------------------------
+	}
+	*/
 
 
 	/*
@@ -443,7 +492,6 @@ int main(int argc, char *argv[])
 
 	Eigen::MatrixXd facecolors;
 
-    typedef CGALTriangulation<Kernel>::Point Point;
     Point origin = Point(0., 0., 0.);
 
     Eigen::MatrixXd x;
