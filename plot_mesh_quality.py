@@ -30,22 +30,21 @@ for i, run in enumerate(runs):
     opmoved=False
     # parse config
     splt = run.split('_')[:-1]
-    n_orbitpoints = int(splt[0])
     cellSize = float(splt[1])
     re_ratio = float(splt[2])
-    n_flips  = int(splt[3])
-    maxpointmove = float(splt[4])
-    use_lloyd = bool(int(splt[5]))
-    use_perturb = bool(int(splt[6]))
-    use_exude = bool(int(splt[7]))
+    use_lloyd = bool(int(splt[3]))
+    use_perturb = bool(int(splt[4]))
+    use_exude = bool(int(splt[5]))
+    n_flips  = int(splt[6])
+
+    n_orbitpoints = 0
+    maxpointmove  = 0
 
     if len(splt) > 8:
         n_orbitpoints = int(splt[8])
         opmoved=True
 
-    title_str = "N:{} {},  Cellsize {}, RE Ratio {},   {}{}{} {}Flips".format(
-        n_orbitpoints,
-        "(moved by max {})".format(maxpointmove) if opmoved else "",
+    title_str = "Cellsize {}, RE Ratio {},   {}{}{} {}Flips".format(
         cellSize,
         re_ratio,
         "+lloyd" if

@@ -329,116 +329,43 @@ int main(int argc, char *argv[])
 	int n_flips				=   0 ;
 	double  edgeprob		=   0.; 
 	double maxPointMove     =   0.001;
-	
-	std::cout << "START" << std::endl;
 
-	std::string FILENAME_base = "";
+	// #########################################
+	std::cout << "SPHERE CREATION" << std::endl;
+	// #########################################
+
+	std::string FILENAME_base = "Sphere_";
 	for (int i=0; i < argc-1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
-	// tetlib NORBITPOINTS CELLSIZE RTOERATIO NFLIPS MAXPOINTMOVE LLOYD PERTURB EXUDE
+	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
 	meshingOptions mOptions;
-	if(argc >= 2){
-		mOptions.n_orbitpoints = -1;  //atoi(argv[1]);
-		if (argc>=3) {
-			mOptions.cellSize = std::stod(argv[2]);
-			if (argc>=4) {
-				mOptions.cell_radius_edge_ratio = std::stod(argv[3]);
-				if(argc>=5) {
-					n_flips = std::atoi(argv[4]);
-					if(argc>=6) {
-							maxPointMove= std::stod(argv[5]);
-						if(argc>=7) {
-							if (atoi(argv[6])) mOptions.opt_lloyd=true;
-							if(argc>=8) {
-								if (atoi(argv[7])) mOptions.opt_perturb=true;
-								if(argc>=9) {
-									if (atoi(argv[8])) mOptions.opt_exude=true;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	mOptions.cellSize				= std::stod(argv[1]);
+	mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
+	if (atoi(argv[3])) mOptions.opt_lloyd   = true;
+	if (atoi(argv[4])) mOptions.opt_perturb = true;
+	if (atoi(argv[5])) mOptions.opt_exude   = true;
+	n_flips							= std::atoi(argv[6]);
+	maxPointMove					= 0;  //std::stod(argv[7]);
+	mOptions.n_orbitpoints			= -1; //atoi(argv[8]);
 
 	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 
-
-	std::cout << "Finished sphere creation" << std::endl;
-
-	if (n_orbitpoints < 0) {
-		std::cout << "n_orbit points < 0, look for orbit points in small radius and shift them" << std::endl;	
-		std::vector<int> changed_indices;
-
-		// write config - orbit points to file
-		std::ofstream cfile;
-		cfile.open("out/" "configs.txt", std::ios_base::app);
-		for (int i=0; i < argc; ++i) cfile << argv[i] << ","; 
-		cfile << std::endl;
-
-		if (adjustPointsOriginAndOrbit(tri, changed_indices, .5, maxPointMove)) {
-			std::cout << "changed " << changed_indices.size() << "points" << std::endl;
-
-			cfile << changed_indices.size()-1 << std::endl;
-			cfile.close();
-
-			FILENAME_base += std::to_string( changed_indices.size() - 1) + "_";
-
-		} else {
-			std::cout << "No orbit points found, exit." << std::endl;
-			cfile << "0" << std::endl;
-			cfile.close();
-
-			return EXIT_FAILURE;
-		}
-	}
-
-	/*
-	if (false) {
-		// TEST WRITEOUT: --------------------------------
-		// - save orbitpoints
-		std::vector<Point> orbitpnts;
-		for (int i : changed_indices){
-			for (auto vh : tri.mesh.finite_vertex_handles()) {
-				if (vh->info() == i) {
-					orbitpnts.push_back(vh->point());
-				}
-			}
-		} 
-
-		// store mesh
-		std::string outfilename = "out/" + FILENAME_base;
-		tri.write(outfilename);
-		CGALTriangulation<Kernel> tri_l;
-		tri_l.load(outfilename);
-		
-		// - compare  orbitpoints
-		int j = 0;
-		for (auto i :changed_indices){
-			for (auto vh : tri_l.mesh.finite_vertex_handles()) {
-				if (vh->info() == i) {
-					std::cout << vh->point() == orbitpnts[j] << std::endl;
-					j++;
-				}
-			}
-		} 
-		
-		// -----------------------------------------------
-	}
-	*/
-
-
-	/*
-	std::cout << "Finished Sphere Creation (" << mode << ")" << std::endl;
-	for (auto v: tri.mesh.finite_vertex_handles()) {
-		std::cout << v->point() << std::endl;
-	}
-	*/
+	// #########################################
+	std::cout << "FLIPPING EDGES" << std::endl;
+	// #########################################
 
 	//std::cout << "... perform flips " << std::endl;
 	tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 
+	// #########################################
+	std::cout << "WRITE TO FILE"  << std::endl;
+	// #########################################
+	std::string outfile = "out/" + FILENAME_base + ".meshfile";
+	tri.write(outfile);
+
+	// #########################################
+	std::cout << "METRICS"  << std::endl;
+	// #########################################
 	std::cout << "Calc metrics" << std::endl;
 	enum Metric {minangle=0, amips, volume};
 	Metric metric_shown = minangle;

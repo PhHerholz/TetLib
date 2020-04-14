@@ -185,7 +185,12 @@ torus_fun (const typename TKernel::Point_3& p)
 { return tf(p.x(), p.y(), p.z());}
 
 struct meshingOptions {
-    meshingOptions() : cellSize(0.1), cell_radius_edge_ratio(2.), n_orbitpoints(-1), opt_lloyd(false), opt_perturb(false), opt_exude(false){}
+    meshingOptions() : cellSize(0.1),
+					   cell_radius_edge_ratio(2.),
+					   n_orbitpoints(-1), 
+					   opt_lloyd(false),
+					   opt_perturb(false), 
+					   opt_exude(false)  {}
 	double cellSize;
 	double cell_radius_edge_ratio;
 	int n_orbitpoints;
