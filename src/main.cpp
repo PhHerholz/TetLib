@@ -211,12 +211,17 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     file.close();
 }
 
+// SET GLOBAL TO HANDLE IN CALLBACKS
+enum Metric {minangle=0, amips, volume};
+std::string FILENAME_base = "";
 std::string FILENAME="";
+Eigen::MatrixXd facecolors;
+std::map<Metric, Eigen::MatrixXd> cellcolors;
+std::vector<int>  faceids; 
+Metric metric_shown;
 
-bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier)
-{
-  if (key == '1')
-  {
+void screenshot(igl::opengl::glfw::Viewer& viewer, std::string filename) {
+
     // Allocate temporary buffers
     Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(1280,800);
     Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(1280,800);
@@ -228,7 +233,55 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
       viewer.data(),false,R,G,B,A);
 
     // Save it to a PNG
-    igl::png::writePNG(R,G,B,A, "out/" + FILENAME +  "out.png");
+    igl::png::writePNG(R,G,B,A, "out/" + filename +  "out.png");
+
+}
+
+bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier)
+{
+  if (key == '1')
+  {
+	  std::cout << FILENAME_base << std::endl;
+	  screenshot(viewer, FILENAME);
+	  if (metric_shown == minangle) {
+		  metric_shown = amips;
+		  FILENAME = FILENAME_base + "amips";
+	  } else if (metric_shown == amips) {
+		  metric_shown = volume;
+		  FILENAME = FILENAME_base + "volume";
+	  } else {
+		  metric_shown = minangle;
+		  FILENAME = FILENAME_base + "minangle";
+	  }
+
+	  facecolors.resize(faceids.size(), 3);
+	  for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+	  viewer.data().set_colors(facecolors);
+
+	  if(metric_shown == minangle) {
+		viewer.launch_shut(); 
+	  } 
+  }
+
+  if (key == '0') {
+	std::cout << "View angle: " << std::endl;
+	std::cout << viewer.core().camera_view_angle << std::endl; 
+	std::cout << "Camera Up:" << std::endl;
+	std::cout << viewer.core().camera_up << std::endl; 
+	std::cout << "Camera Eye:" << std::endl;
+	std::cout << viewer.core().camera_eye << std::endl; 
+	std::cout << "Camera base trans:" << std::endl;
+	std::cout << viewer.core().camera_base_translation << std::endl; 
+	std::cout << viewer.core().camera_translation << std::endl; 
+	std::cout << viewer.core().camera_center << std::endl; 
+	std::cout << viewer.core().trackball_angle.coeffs() << std::endl;
+  }
+
+  if (key == '9') {
+	  viewer.core().camera_view_angle += 5;
+  }
+  if (key == '8') {
+	  viewer.core().camera_translation *= 1.1;
   }
 }
 
@@ -287,6 +340,7 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 			}
         }
     }
+
     int n_orbit_points = changed_inds.size();
     std::cout << "Found " << n_orbit_points << " orbit points" <<  std::endl;
 	if (n_orbit_points < 1) {
@@ -301,6 +355,7 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
             std::cout << "set point " << a->point() << "to the origin (moved it by " << sqrt(CGAL::squared_distance(origin, a->point())) << ")" << std::endl;
             a->set_point(origin);
             dists[v_ind] = sqrt(CGAL::squared_distance(origin, a->point()));
+			std::cout << "Minind: " << minind << std::endl;
         }
     }
 
@@ -315,6 +370,7 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 	//add origin to the orbit inds
 	changed_inds.push_back(minind);
 
+
 	return true;
 }
 
@@ -325,7 +381,7 @@ int main(int argc, char *argv[])
     typedef CGALTriangulation<Kernel>::Point Point;
     
 	// sphere generation options (with default values)
-	int n_orbitpoints		=   -1; 
+	int min_orbitpoints		=   10; 
 	int n_flips				=   0 ;
 	double  edgeprob		=   0.; 
 	double maxPointMove     =   0.001;
@@ -334,21 +390,111 @@ int main(int argc, char *argv[])
 	std::cout << "SPHERE CREATION" << std::endl;
 	// #########################################
 
-	std::string FILENAME_base = "Sphere_";
+	FILENAME_base = "Sphere_";
 	for (int i=0; i < argc-1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
 	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
 	meshingOptions mOptions;
-	mOptions.cellSize				= std::stod(argv[1]);
+	double cellSize = std::stod(argv[1]);
+	mOptions.cellSize = cellSize;
 	mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
 	if (atoi(argv[3])) mOptions.opt_lloyd   = true;
 	if (atoi(argv[4])) mOptions.opt_perturb = true;
 	if (atoi(argv[5])) mOptions.opt_exude   = true;
 	n_flips							= std::atoi(argv[6]);
-	maxPointMove					= 0;  //std::stod(argv[7]);
-	mOptions.n_orbitpoints			= -1; //atoi(argv[8]);
 
 	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
+
+	if (min_orbitpoints >= 0) {
+		// #########################################
+		std::cout << "GENERATE ORBIT POINTS" << std::endl;
+		// #########################################
+		std::cout << "look for orbit points in small radius and shift them" << std::endl;	
+		std::cout << "Start with an epsilon of cellSize^(1_3) / 500" << std::endl;
+		double epsilon = cbrt(cellSize) / 500;
+
+		std::vector<int> changed_indices;
+
+
+		int n_orbitpoints=0;
+		while (n_orbitpoints < min_orbitpoints && epsilon <= 0.5) {
+			adjustPointsOriginAndOrbit(tri, changed_indices, .5, epsilon);
+			n_orbitpoints = changed_indices.size()-1;
+
+			if(n_orbitpoints < min_orbitpoints) epsilon += cbrt(cellSize) / 2000;
+		}
+
+		// write config 
+		//std::ofstream cfile;
+		//cfile.open("out/" ".txt", std::ios_base::app);
+		//cfile << FILENAME_base << std::endl;;
+		 
+		//std::ofstream orbitfile;
+		//orbitfile.open("out/"+ FILENAME_base +  ".orbitindices");
+		//for (int cind : changed_indices) std::cout << cind << " ";
+
+		std::cout << "N orbitpoints: " << n_orbitpoints << std::endl;
+		std::cout << "Epsilon : " << epsilon << std::endl;
+
+		std::cout << "Changed inds: ";
+		for (int cind : changed_indices) std::cout << cind << " ";
+		std::cout << std::endl;
+
+		Point origin;
+		for (auto vh : tri.mesh.finite_vertex_handles()) {
+			if (vh->info() == changed_indices[n_orbitpoints]) {
+			origin = vh->point();	
+			break;
+			}
+		}
+		std::cout << "Origin: " << origin << std::endl;
+		std::cout << "OP distances: " << std::endl;
+		for (int i : changed_indices){
+			for (auto vh : tri.mesh.finite_vertex_handles()) {
+				if (vh->info() == i) {
+					std::cout << sqrt(CGAL::squared_distance(origin, vh->point())) << std::endl;
+				}
+			}
+		} 
+
+
+
+		if (false) {
+		// TEST WRITEOUT: --------------------------------
+		// - save orbitpoints
+		std::vector<Point> orbitpnts;
+		for (int i : changed_indices){
+			for (auto vh : tri.mesh.finite_vertex_handles()) {
+				if (vh->info() == i) {
+					orbitpnts.push_back(vh->point());
+				}
+			}
+		} 
+
+		// store mesh
+		std::string outfilename = "out/" + FILENAME_base;
+		tri.write(outfilename);
+		CGALTriangulation<Kernel> tri_l;
+		tri_l.read(outfilename);
+		
+		// - compare  orbitpoints
+		int j = 0;
+		for (auto i :changed_indices){
+			for (auto vh : tri_l.mesh.finite_vertex_handles()) {
+				if (vh->info() == i) {
+					if ( (vh->point() - orbitpnts[j]).squared_length() < 1e-8) {
+						std::cout << " Points the same" << std::endl;
+					} else {
+						std::cout << " Points NOT the same: " << vh->point() << orbitpnts[j] << std::endl;
+					}
+					j++;
+				}
+			}
+		} 
+		
+		// -----------------------------------------------
+		}
+	}
 
 	// #########################################
 	std::cout << "FLIPPING EDGES" << std::endl;
@@ -367,12 +513,9 @@ int main(int argc, char *argv[])
 	std::cout << "METRICS"  << std::endl;
 	// #########################################
 	std::cout << "Calc metrics" << std::endl;
-	enum Metric {minangle=0, amips, volume};
-	Metric metric_shown = minangle;
+	metric_shown = minangle;
 	std::map<Metric, Eigen::VectorXd> cell_metrics;
-	std::map<Metric, Eigen::MatrixXd> cellcolors;
 	std::map<Metric, std::string> metric_names;
-
 	metric_names[minangle] = "minangle";
 	metric_names[amips] = "amips";
 	metric_names[volume] = "volume";
@@ -417,7 +560,6 @@ int main(int argc, char *argv[])
 	cellcolors[amips] = cellcolors_amips;
 
 
-	Eigen::MatrixXd facecolors;
 
     Point origin = Point(0., 0., 0.);
 
@@ -436,7 +578,7 @@ int main(int argc, char *argv[])
     std::array<double, 4> plane{1,0,0,offset};
 	std::vector<std::vector<int>> cmreturn = tri.cutMesh(plane, V, F);
 	std::vector<int>  ids     = cmreturn[0];
-	std::vector<int>  faceids = cmreturn[1];
+	faceids = cmreturn[1];
 	facecolors.resize(faceids.size(), 3);
 	for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
     
@@ -562,6 +704,7 @@ int main(int argc, char *argv[])
 
 	viewer.callback_key_down = &key_down;
 
+		
 	/* Add labels for debugging
 	for(int i = 0; i < F.rows(); ++i) {
 		const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
@@ -577,5 +720,15 @@ int main(int argc, char *argv[])
     viewer.data().set_uv(UV.setZero());
 	*/
 
+
+
+	viewer.core().trackball_angle.x() = 0.121685;
+	viewer.core().trackball_angle.y() = 0.335208;
+	viewer.core().trackball_angle.z() = 0.0437081;
+	viewer.core().trackball_angle.w() = 0.93323;
+
+	//screenshot(viewer, "dadada");
+
     viewer.launch();
+
 }

@@ -1,10 +1,10 @@
 cd build
 
-for CVOL in 0.1 0.092 0.084 0.076 0.068 0.061 0.053 0.045 0.037 0.03
+for CVOL in 0.5 0.03 #0.092 0.084 0.076 0.068 0.061 0.053 0.045 0.037 0.03
 do
 for CERATIO in 2
 do
-for NFLIPS in 0 #1000
+for NFLIPS in 0 200 #1000
 do
 for OPTS in "000"
 do
@@ -18,7 +18,7 @@ cd ..
 python3 plot_mesh_quality.py build/out
 mv build/out/*.meshfile build/out/plots/
 
-FOLDERNAME="r6"
+FOLDERNAME="r8"
 
 echo $FOLDERNAME
 
