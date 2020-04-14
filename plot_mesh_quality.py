@@ -27,28 +27,36 @@ for i, run in enumerate(runs):
 
     df = pd.read_csv(path_base + "metrics.csv")
 
+    opmoved=False
     # parse config
     splt = run.split('_')[:-1]
     n_orbitpoints = int(splt[0])
     cellSize = float(splt[1])
     re_ratio = float(splt[2])
     n_flips  = int(splt[3])
-    use_lloyd = bool(int(splt[4]))
-    use_perturb = bool(int(splt[5]))
-    use_exude = bool(int(splt[6]))
+    maxpointmove = float(splt[4])
+    use_lloyd = bool(int(splt[5]))
+    use_perturb = bool(int(splt[6]))
+    use_exude = bool(int(splt[7]))
 
-    title_str = "N {}, Cellsize {}, RE Ratio {} {}{}{} {}Flips".format(n_orbitpoints,
-                                                              cellSize,
-                                                              re_ratio,
-                                                              "+lloyd" if
-                                                              use_lloyd
-                                                              else "",
-                                                              "+perturb" if
-                                                              use_perturb
-                                                              else "",
-                                                              "+exude" if
-                                                              use_exude
-                                                              else "", n_flips)
+    if len(splt) > 8:
+        n_orbitpoints = int(splt[8])
+        opmoved=True
+
+    title_str = "N:{} {},  Cellsize {}, RE Ratio {},   {}{}{} {}Flips".format(
+        n_orbitpoints,
+        "(moved by max {})".format(maxpointmove) if opmoved else "",
+        cellSize,
+        re_ratio,
+        "+lloyd" if
+        use_lloyd
+        else "",
+        "+perturb" if
+        use_perturb
+        else "",
+        "+exude" if
+        use_exude
+        else "", n_flips)
 
 
     rows = len(df.keys())
