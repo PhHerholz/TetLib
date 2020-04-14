@@ -369,8 +369,8 @@ int main(int argc, char *argv[])
 
 	if (n_orbitpoints < 0) {
 		std::cout << "n_orbit points < 0, look for orbit points in small radius and shift them" << std::endl;	
-		std::vector<int> changed_indices;
 
+		std::vector<int> changed_indices;
 		// write config - orbit points to file
 		std::ofstream cfile;
 		cfile.open("out/" "configs.txt", std::ios_base::app);
@@ -392,10 +392,7 @@ int main(int argc, char *argv[])
 
 			return EXIT_FAILURE;
 		}
-	}
 
-	/*
-	if (false) {
 		// TEST WRITEOUT: --------------------------------
 		// - save orbitpoints
 		std::vector<Point> orbitpnts;
@@ -411,14 +408,18 @@ int main(int argc, char *argv[])
 		std::string outfilename = "out/" + FILENAME_base;
 		tri.write(outfilename);
 		CGALTriangulation<Kernel> tri_l;
-		tri_l.load(outfilename);
+		tri_l.read(outfilename);
 		
 		// - compare  orbitpoints
 		int j = 0;
 		for (auto i :changed_indices){
 			for (auto vh : tri_l.mesh.finite_vertex_handles()) {
 				if (vh->info() == i) {
-					std::cout << vh->point() == orbitpnts[j] << std::endl;
+					if ( (vh->point() - orbitpnts[j]).squared_length() < 1e-8) {
+						std::cout << " Points the same" << std::endl;
+					} else {
+						std::cout << " Points NOT the same: " << vh->point() << orbitpnts[j] << std::endl;
+					}
 					j++;
 				}
 			}
@@ -426,7 +427,6 @@ int main(int argc, char *argv[])
 		
 		// -----------------------------------------------
 	}
-	*/
 
 
 	/*
