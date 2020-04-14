@@ -211,12 +211,17 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     file.close();
 }
 
+// SET GLOBAL TO HANDLE IN CALLBACKS
+enum Metric {minangle=0, amips, volume};
+std::string FILENAME_base = "";
 std::string FILENAME="";
+Eigen::MatrixXd facecolors;
+std::map<Metric, Eigen::MatrixXd> cellcolors;
+std::vector<int>  faceids; 
+Metric metric_shown;
 
-bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier)
-{
-  if (key == '1')
-  {
+void screenshot(igl::opengl::glfw::Viewer& viewer, std::string filename) {
+
     // Allocate temporary buffers
     Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> R(1280,800);
     Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> G(1280,800);
@@ -228,7 +233,54 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
       viewer.data(),false,R,G,B,A);
 
     // Save it to a PNG
-    igl::png::writePNG(R,G,B,A, "out/" + FILENAME +  "out.png");
+    igl::png::writePNG(R,G,B,A, "out/" + filename +  "out.png");
+
+}
+
+bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier)
+{
+  if (key == '1')
+  {
+	  screenshot(viewer, FILENAME);
+	  if (metric_shown == minangle) {
+		  metric_shown = amips;
+		  FILENAME = FILENAME_base + "amips";
+	  } else if (metric_shown == amips) {
+		  metric_shown = volume;
+		  FILENAME = FILENAME_base + "volume";
+	  } else {
+		  metric_shown = minangle;
+		  FILENAME = FILENAME_base + "minangle";
+	  }
+
+	  facecolors.resize(faceids.size(), 3);
+	  for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+	  viewer.data().set_colors(facecolors);
+
+	  if(metric_shown == minangle) {
+		viewer.launch_shut(); 
+	  } 
+  }
+
+  if (key == '0') {
+	std::cout << "View angle: " << std::endl;
+	std::cout << viewer.core().camera_view_angle << std::endl; 
+	std::cout << "Camera Up:" << std::endl;
+	std::cout << viewer.core().camera_up << std::endl; 
+	std::cout << "Camera Eye:" << std::endl;
+	std::cout << viewer.core().camera_eye << std::endl; 
+	std::cout << "Camera base trans:" << std::endl;
+	std::cout << viewer.core().camera_base_translation << std::endl; 
+	std::cout << viewer.core().camera_translation << std::endl; 
+	std::cout << viewer.core().camera_center << std::endl; 
+	std::cout << viewer.core().trackball_angle.coeffs() << std::endl;
+  }
+
+  if (key == '9') {
+	  viewer.core().camera_view_angle += 5;
+  }
+  if (key == '8') {
+	  viewer.core().camera_translation *= 1.1;
   }
 }
 
@@ -332,7 +384,6 @@ int main(int argc, char *argv[])
 	
 	std::cout << "START" << std::endl;
 
-	std::string FILENAME_base = "";
 	for (int i=0; i < argc-1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
 	// tetlib NORBITPOINTS CELLSIZE RTOERATIO NFLIPS MAXPOINTMOVE LLOYD PERTURB EXUDE
@@ -440,12 +491,9 @@ int main(int argc, char *argv[])
 	tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 
 	std::cout << "Calc metrics" << std::endl;
-	enum Metric {minangle=0, amips, volume};
-	Metric metric_shown = minangle;
+	metric_shown = minangle;
 	std::map<Metric, Eigen::VectorXd> cell_metrics;
-	std::map<Metric, Eigen::MatrixXd> cellcolors;
 	std::map<Metric, std::string> metric_names;
-
 	metric_names[minangle] = "minangle";
 	metric_names[amips] = "amips";
 	metric_names[volume] = "volume";
@@ -490,7 +538,6 @@ int main(int argc, char *argv[])
 	cellcolors[amips] = cellcolors_amips;
 
 
-	Eigen::MatrixXd facecolors;
 
     Point origin = Point(0., 0., 0.);
 
@@ -509,7 +556,7 @@ int main(int argc, char *argv[])
     std::array<double, 4> plane{1,0,0,offset};
 	std::vector<std::vector<int>> cmreturn = tri.cutMesh(plane, V, F);
 	std::vector<int>  ids     = cmreturn[0];
-	std::vector<int>  faceids = cmreturn[1];
+	faceids = cmreturn[1];
 	facecolors.resize(faceids.size(), 3);
 	for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
     
@@ -635,6 +682,7 @@ int main(int argc, char *argv[])
 
 	viewer.callback_key_down = &key_down;
 
+		
 	/* Add labels for debugging
 	for(int i = 0; i < F.rows(); ++i) {
 		const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
@@ -650,5 +698,15 @@ int main(int argc, char *argv[])
     viewer.data().set_uv(UV.setZero());
 	*/
 
+
+
+	viewer.core().trackball_angle.x() = 0.121685;
+	viewer.core().trackball_angle.y() = 0.335208;
+	viewer.core().trackball_angle.z() = 0.0437081;
+	viewer.core().trackball_angle.w() = 0.93323;
+
+	//screenshot(viewer, "dadada");
+
     viewer.launch();
+
 }
