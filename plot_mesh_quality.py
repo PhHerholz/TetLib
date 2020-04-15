@@ -17,8 +17,7 @@ if not os.path.exists(plot_folder):
 
 runs = []
 for name in os.listdir(folder):
-    splt = name.split(".")
-    if splt[-1] == 'csv':
+    if name.endswith("metrics.csv"):
         runs.append(name.split('metrics.csv')[0])
 
 for i, run in enumerate(runs):

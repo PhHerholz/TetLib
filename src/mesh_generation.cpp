@@ -255,7 +255,7 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
 	  }
 
 	  facecolors.resize(faceids.size(), 3);
-	  for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+	  for (int i=0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 	  viewer.data().set_colors(facecolors);
 
 	  if(metric_shown == minangle) {
@@ -286,11 +286,12 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
 }
 
 bool
-adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &changed_inds, double orbit_dist =.5, double eps=.001) {
+adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &changed_inds, std::vector<double> &changed_by, double orbit_dist =.5, double eps=.001) {
 
 	int nv = tri.mesh.number_of_vertices();
     std::vector<double> dists(nv, 0.);
 	changed_inds.clear();
+	changed_by.clear();
 
     typedef CGALTriangulation<Kernel>::Point Point;
     typedef CGALTriangulation<Kernel>::Cell_handle Cell_handle;
@@ -331,10 +332,12 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 			}
 
 			if (allsamesign) {
-				std::cout << "...move orbitpoint by " << sqrt(CGAL::squared_distance(normed_p, a->point())) << std::endl;
+				double cb = sqrt(CGAL::squared_distance(normed_p, a->point())); 
+				std::cout << "...move orbitpoint " << v_ind <<" by " << cb << std::endl;
 				a->set_point(normed_p);
 				dists[v_ind] = sqrt(CGAL::squared_distance(origin, a->point()));
 				changed_inds.push_back(v_ind);
+				changed_by.push_back(cb);
 			} else {
 				std::cout << ".....skipped moving an orbitpoint (it would flip a cell)" << std::endl;	
 			}
@@ -348,14 +351,17 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 		return false;
 	}
 
+	double cb;
     // Set closest point to (0,0,0) to the origin
     for (auto a: tri.mesh.finite_vertex_handles()) {
         int v_ind = a->info();
         if (v_ind == minind){
-            std::cout << "set point " << a->point() << "to the origin (moved it by " << sqrt(CGAL::squared_distance(origin, a->point())) << ")" << std::endl;
+			cb =  sqrt(CGAL::squared_distance(origin, a->point()));
+            std::cout << "set point " << a->point() << "to the origin (moved it by " << cb << ")" << std::endl;
             a->set_point(origin);
             dists[v_ind] = sqrt(CGAL::squared_distance(origin, a->point()));
 			std::cout << "Minind: " << minind << std::endl;
+			//add origin to the orbit inds
         }
     }
 
@@ -366,10 +372,8 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
             return false;
         }
     }
-
-	//add origin to the orbit inds
 	changed_inds.push_back(minind);
-
+	changed_by.push_back(cb);
 
 	return true;
 }
@@ -413,51 +417,58 @@ int main(int argc, char *argv[])
 		std::cout << "Start with an epsilon of cellSize^(1_3) / 500" << std::endl;
 		double epsilon = cbrt(cellSize) / 500;
 
+		int origin_ind = -1;
+		double origin_changedby=-1;
+		std::vector<int> orbit_indices;
+		std::vector<double> orbit_changedby;
 		std::vector<int> changed_indices;
-
+		std::vector<double> changed_by;
 
 		int n_orbitpoints=0;
 		while (n_orbitpoints < min_orbitpoints && epsilon <= 0.5) {
-			adjustPointsOriginAndOrbit(tri, changed_indices, .5, epsilon);
+			adjustPointsOriginAndOrbit(tri, changed_indices, changed_by, .5, epsilon);
 			n_orbitpoints = changed_indices.size()-1;
+			for (double cb : changed_by) std::cout << cb << " ";
+			std::cout << std::endl;
 
+			if (-1  == origin_ind) {
+				// origin is only set once
+				//std::cout << "origin setter " << changed_by[changed_indices.size()-1] << std::endl;
+				origin_ind = changed_indices[changed_indices.size()-1];
+				origin_changedby = changed_by[changed_indices.size()-1];
+			}
+			
+			// update orbit index and changedby for all NEW orbitpoints
+			for (int j =0; j < n_orbitpoints; ++j){
+				int cind = changed_indices[j];
+				bool new_one=true;
+				for (int i: orbit_indices) {
+					if (i == cind) {
+						new_one = false;	
+						break;
+					}
+				}
+				if (new_one) {
+					//std::cout << "New point: (" << cind << "|" << changed_by[j] << ")" << std::endl;
+					orbit_indices.push_back(cind);
+					orbit_changedby.push_back(changed_by[j]);
+				}
+			}
 			if(n_orbitpoints < min_orbitpoints) epsilon += cbrt(cellSize) / 2000;
 		}
 
-		// write config 
-		//std::ofstream cfile;
-		//cfile.open("out/" ".txt", std::ios_base::app);
-		//cfile << FILENAME_base << std::endl;;
-		 
-		//std::ofstream orbitfile;
-		//orbitfile.open("out/"+ FILENAME_base +  ".orbitindices");
-		//for (int cind : changed_indices) std::cout << cind << " ";
 
-		std::cout << "N orbitpoints: " << n_orbitpoints << std::endl;
-		std::cout << "Epsilon : " << epsilon << std::endl;
-
-		std::cout << "Changed inds: ";
-		for (int cind : changed_indices) std::cout << cind << " ";
-		std::cout << std::endl;
-
-		Point origin;
-		for (auto vh : tri.mesh.finite_vertex_handles()) {
-			if (vh->info() == changed_indices[n_orbitpoints]) {
-			origin = vh->point();	
-			break;
-			}
+		// Write orbitpoints and amount they were moved to a file
+		std::ofstream feil;
+		feil.open("out/" + FILENAME_base + "orbitpoints.csv");
+		feil << "orbit_idx" << ", " << "moved_by" << std::endl;
+		// add origin
+		feil << origin_ind << ", " << origin_changedby << std::endl;
+		// add orbitpoints
+		for (int i=0; i < orbit_indices.size(); ++i) {
+			feil      << orbit_indices[i] << ", " << orbit_changedby[i] << std::endl; 		
 		}
-		std::cout << "Origin: " << origin << std::endl;
-		std::cout << "OP distances: " << std::endl;
-		for (int i : changed_indices){
-			for (auto vh : tri.mesh.finite_vertex_handles()) {
-				if (vh->info() == i) {
-					std::cout << sqrt(CGAL::squared_distance(origin, vh->point())) << std::endl;
-				}
-			}
-		} 
-
-
+		feil.close();
 
 		if (false) {
 		// TEST WRITEOUT: --------------------------------
@@ -587,7 +598,7 @@ int main(int argc, char *argv[])
 	std::vector<int>  ids     = cmreturn[0];
 	faceids = cmreturn[1];
 	facecolors.resize(faceids.size(), 3);
-	for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+	for (int i =0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
     
     // Style
     Eigen::Vector3d ambient(.1,.1,.1);
@@ -634,7 +645,7 @@ int main(int argc, char *argv[])
 
 			if (oldmetric != metric_shown){
 				facecolors.resize(faceids.size(), 3);
-				for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+				for (int i=0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 				viewer.data().set_colors(facecolors);
 
 				FILENAME = FILENAME_base + metric_names[metric_shown];
@@ -670,7 +681,7 @@ int main(int argc, char *argv[])
                     viewer.data().set_mesh(V, F);
 
 					facecolors.resize(faceids.size(), 3);
-					for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+					for (int i=0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 					viewer.data().set_colors(facecolors);
                     //viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
                     //viewer.data(cutMeshId).show_texture = 1;
