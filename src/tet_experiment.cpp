@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
 		if(loadMeshWithOrbitpoints(tri, orbitinds, filepath)) {
 			originind = orbitinds.back();
 			orbitinds.pop_back();
-			std::cout << "Oritin ind: " << originind << std::endl;
+			std::cout << "Origin ind: " << originind << std::endl;
 			std::cout << "Orbitinds: " << std::endl;
 			for(int i: orbitinds) std::cout << i << " " << std::endl;
 		
@@ -287,13 +287,6 @@ int main(int argc, char *argv[])
 
 		Eigen::MatrixXd x, h_fem, h_dec, h;
 		solveHeatProblem(tri, h_fem, h_dec);
-		std::cout << "The heat: " << std::endl;
-		//std::cout << h << std::endl;
-		//std::cout << "done" << std::endl;
-		
-		for (int i = 0; i < h_fem.size(); i++) {
-			std::cout << h_fem(i) << " " << h_dec(i) << std::endl;	
-		}
 
 		std::string res_out_path = run_folder + run_name + "heatvals.csv";
 		std::ofstream feil;
