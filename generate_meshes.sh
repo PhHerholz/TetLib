@@ -29,3 +29,7 @@ mkdir build/out/$FOLDERNAME
 mv build/out/plots build/out/$FOLDERNAME
 mv build/out/*.png build/out/$FOLDERNAME
 mv build/out/*.csv build/out/$FOLDERNAME
+
+# ----- HEAT DIFF EXP ---------
+cd build
+./tet_experiment out/$FOLDERNAME/plots/

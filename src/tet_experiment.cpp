@@ -200,13 +200,18 @@ Eigen::MatrixXd  normalizeHeatValues(Eigen::MatrixXd h) {
 int main(int argc, char *argv[])
 {
 
+	if (argc < 2) {
+		std::cout << "usage: argv[0] run_folder" << std::endl;
+		return 0;
+	}
+
 	// no gui output
 	bool silent = true;
 
 	CGALTriangulation<Kernel> tri;
 	int originind;
 	std::vector<int> orbitinds;
-	std::string run_folder = "out/run_00/plots/";
+	std::string run_folder = argv[1]; //"out/run_00/plots/";
 
 
 	std::string meshNamesFile= run_folder + "meshes.txt";
