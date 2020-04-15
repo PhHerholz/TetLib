@@ -509,6 +509,13 @@ int main(int argc, char *argv[])
 	std::string outfile = "out/" + FILENAME_base + ".meshfile";
 	tri.write(outfile);
 
+	std::ofstream mNfile;
+	std::string meshNamesFile= "out/meshes.txt";
+	mNfile.open(meshNamesFile, std::ios_base::app); // append instead of overwrite
+	mNfile << FILENAME_base << std::endl; 
+	mNfile.close();
+
+
 	// #########################################
 	std::cout << "METRICS"  << std::endl;
 	// #########################################

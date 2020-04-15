@@ -2,7 +2,7 @@ cd build
 
 mkdir -p out
 
-for CVOL in 0.5 #0.092 0.084 0.076 0.068 0.061 0.053 0.045 0.037 0.03
+for CVOL in 0.5 0.4 #0.092 0.084 0.076 0.068 0.061 0.053 0.045 0.037 0.03
 do
 for CERATIO in 2
 do
@@ -19,6 +19,7 @@ done
 cd ..
 python3 plot_mesh_quality.py build/out
 mv build/out/*.meshfile build/out/plots/
+mv build/out/meshes.txt build/out/plots/
 
 FOLDERNAME="run_00"
 
