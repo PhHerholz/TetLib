@@ -185,14 +185,16 @@ torus_fun (const typename TKernel::Point_3& p)
 { return tf(p.x(), p.y(), p.z());}
 
 struct meshingOptions {
-    meshingOptions() : cellSize(0.1),
+    meshingOptions() : cell_size(0.1),
 					   cell_radius_edge_ratio(2.),
+					   facet_size(0.1),
 					   n_orbitpoints(-1), 
 					   opt_lloyd(false),
 					   opt_perturb(false), 
 					   opt_exude(false)  {}
-	double cellSize;
+	double cell_size;
 	double cell_radius_edge_ratio;
+	double facet_size;
 	int n_orbitpoints;
 	bool opt_lloyd;
 	bool opt_perturb;
@@ -265,7 +267,7 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
         }
     };
 
-	//Spherical_sizing_field cellSize_field;
+	//Spherical_sizing_field cell_size;
 
 	// negative number of orbit points means not to add the origin eather
 	//add origin and orbit points as 0-dim features (called corners)
@@ -273,11 +275,11 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 
 	/*
 	// Mesh criteria
-	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=cellSize_field); // mOptions.cellSize);
+	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=cellSize_field); // mOptions.cell_size);
 	*/
     Spherical_sizing_field size;
-	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025,
-                         cell_radius_edge_ratio=2, cell_size=mOptions.cellSize);
+	Mesh_criteria criteria(facet_angle=30, facet_size=mOptions.facet_size, facet_distance=0.025,
+                         cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=mOptions.cell_size);
   
 
 	// Mesh generation 

@@ -399,13 +399,15 @@ int main(int argc, char *argv[])
 
 	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
 	meshingOptions mOptions;
-	double cellSize = std::stod(argv[1]);
-	mOptions.cellSize = cellSize;
+	double cellSize    = std::stod(argv[1]);
+	mOptions.cell_size  = cellSize;
 	mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
-	if (atoi(argv[3])) mOptions.opt_lloyd   = true;
-	if (atoi(argv[4])) mOptions.opt_perturb = true;
-	if (atoi(argv[5])) mOptions.opt_exude   = true;
-	n_flips							= std::atoi(argv[6]);
+	double facetSize   = std::stod(argv[3]);
+	mOptions.facet_size = facetSize;
+	if (atoi(argv[4])) mOptions.opt_lloyd   = true;
+	if (atoi(argv[5])) mOptions.opt_perturb = true;
+	if (atoi(argv[6])) mOptions.opt_exude   = true;
+	n_flips							= std::atoi(argv[7]);
 
 	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 

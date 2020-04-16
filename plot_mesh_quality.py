@@ -31,21 +31,18 @@ for i, run in enumerate(runs):
     splt = run.split('_')[:-1]
     cellSize = float(splt[1])
     re_ratio = float(splt[2])
-    use_lloyd = bool(int(splt[3]))
-    use_perturb = bool(int(splt[4]))
-    use_exude = bool(int(splt[5]))
-    n_flips  = int(splt[6])
+    facetSize = float(splt[3])
+    use_lloyd = bool(int(splt[4]))
+    use_perturb = bool(int(splt[5]))
+    use_exude = bool(int(splt[6]))
+    n_flips  = int(splt[7])
 
-    n_orbitpoints = 0
     maxpointmove  = 0
 
-    if len(splt) > 8:
-        n_orbitpoints = int(splt[8])
-        opmoved=True
-
-    title_str = "Cellsize {}, RE Ratio {},   {}{}{} {}Flips".format(
+    title_str = "Cellsize {}, RE Ratio {}, Facet Size {}, {}{}{} {}Flips".format(
         cellSize,
         re_ratio,
+        facetSize,
         "+lloyd" if
         use_lloyd
         else "",
