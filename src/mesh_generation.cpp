@@ -346,10 +346,13 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 
     int n_orbit_points = changed_inds.size();
     std::cout << "Found " << n_orbit_points << " orbit points" <<  std::endl;
+
+	/*
 	if (n_orbit_points < 1) {
 		std::cout << "Error: orbit eps too small, no points in range, abort" << std::endl;	
 		return false;
 	}
+	*/
 
 	double cb;
     // Set closest point to (0,0,0) to the origin
