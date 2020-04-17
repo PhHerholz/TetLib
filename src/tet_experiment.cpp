@@ -236,7 +236,7 @@ int main(int argc, char *argv[])
 	}
 
 	// no gui output
-	bool silent = false;
+	bool silent = true;
 
 	CGALTriangulation<Kernel> tri;
 	int originind;

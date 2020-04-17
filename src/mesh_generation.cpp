@@ -428,7 +428,8 @@ int main(int argc, char *argv[])
 		std::vector<double> changed_by;
 
 		int n_orbitpoints=0;
-		while (n_orbitpoints < min_orbitpoints && epsilon <= 0.5) {
+		bool any_new_ones=true;
+		while (n_orbitpoints < min_orbitpoints && epsilon <= 0.5 && any_new_ones) {
 			adjustPointsOriginAndOrbit(tri, changed_indices, changed_by, .5, epsilon);
 			n_orbitpoints = changed_indices.size()-1;
 			for (double cb : changed_by) std::cout << cb << " ";
@@ -442,6 +443,7 @@ int main(int argc, char *argv[])
 			}
 			
 			// update orbit index and changedby for all NEW orbitpoints
+			any_new_ones = false;
 			for (int j =0; j < n_orbitpoints; ++j){
 				int cind = changed_indices[j];
 				bool new_one=true;
@@ -452,11 +454,15 @@ int main(int argc, char *argv[])
 					}
 				}
 				if (new_one) {
+					any_new_ones=true;
 					//std::cout << "New point: (" << cind << "|" << changed_by[j] << ")" << std::endl;
 					orbit_indices.push_back(cind);
 					orbit_changedby.push_back(changed_by[j]);
 				}
 			}
+
+			if (!any_new_ones) std::cout << "!!!!!!!!!!!!!!!!!!!!!!!!!! No New points can be found with larger radius, stop" << std::endl;
+
 			if(n_orbitpoints < min_orbitpoints) epsilon += cbrt(cellSize) / 2000;
 		}
 
