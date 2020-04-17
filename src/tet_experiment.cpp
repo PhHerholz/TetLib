@@ -47,7 +47,10 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Ei
     Eigen::SparseMatrix<double> A_fem, A_dec, L_fem, L_dec, M;
     //tri.massMatrix(M);
     tri.FEMLaplacian(L_fem);
-    tri.DECLaplacian(L_dec, &M);
+
+	std::cout << "Using Mixed DEC" << std::endl;
+    tri.DECLaplacianMixed(L_dec, &M);
+    // tri.DECLaplacian(L_dec, &M);
     const double t = tri.meanEdgeLengthSquared();
     A_fem = M + t * L_fem;
 	A_dec = M - t * L_dec; 
@@ -61,40 +64,63 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Ei
     constrValues.setZero();
     constrValues(boundary_indices.size()-1, 0) = 1;
 
+	std::cout << "SHAPES " <<std::endl;
+	std::cout << constrValues.size() << std::endl;
+	std::cout << B.rows() << ", " << B.cols()  << std::endl;
+	std::cout << "FEM: " << std::endl;
+	std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
+	std::cout << "DEC: " << std::endl;
+	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
+
     solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
+	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
+
     solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
+	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
+}
 
-    /*
-    // Get A_ii, A_ib
-    std::vector<int> boundary_indices = tri.surfaceVertices; 
+
+
+void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec)
+{
+    const int cntr = tri.centerVertex();
+    const int n = tri.mesh.number_of_vertices();
+
+    // Construct A 
+    Eigen::SparseMatrix<double> A_fem, A_dec, L_fem, L_dec, M;
+    //tri.massMatrix(M);
+    tri.FEMLaplacian(L_fem);
+
+	std::cout << "Using Mixed DEC" << std::endl;
+    tri.DECLaplacianMixed(L_dec, &M);
+    // tri.DECLaplacian(L_dec, &M);
+    A_fem = L_fem;
+	A_dec =-L_dec; 
+
+    // solve the constrained problems
+    std::vector<int> boundary_indices = tri.surfaceVertices(); 
     boundary_indices.push_back(cntr);
-    std::vector<int> inner_indices;
-    for (it i=0; i<n; ++i) {
-        bool inner=true;
-        for (b_ind : boundary_indices) {
-        if (i == b_ind) inner_false;
-        }
-        if (inner) {
-            inner_indices.push_back(i); 
-        }
-    }
-    */
-   
-    /*
-    Eigen::VectorXd bb(A_fem.cols());
-    bb.setZero();
-    bb(cntr) = 1.;
-    
-    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_fem;
-    chol_fem.analyzePattern(A_fem);
-    chol_fem.factorize(A_fem);
-    h_fem = chol_fem.solve(bb);
 
-    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_dec;
-    chol_dec.analyzePattern(A_dec);
-    chol_dec.factorize(A_dec);
-    h_dec = chol_dec.solve(bb);
-    */
+    Eigen::MatrixXd B(n, 1); B.setZero();
+    Eigen::MatrixXd constrValues(boundary_indices.size(), 1);
+    constrValues.setZero();
+    constrValues(boundary_indices.size()-1, 0) = 1;
+
+	/*
+	std::cout << "SHAPES " <<std::endl;
+	std::cout << constrValues.size() << std::endl;
+	std::cout << B.rows() << ", " << B.cols()  << std::endl;
+	std::cout << "FEM: " << std::endl;
+	std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
+	std::cout << "DEC: " << std::endl;
+	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
+	*/
+
+    solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
+	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
+
+    solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
+	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 }
 
 
@@ -318,10 +344,18 @@ int main(int argc, char *argv[])
 		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
 		cellcolors[amips] = cellcolors_amips;
 
+		if (orbitinds.size() < 1) {
+			std::cout << "No orbit points in file, abort" << std::endl;	
+			return 0;
+		}
+
 		/* ################## HEAT DIFFUSION ################ */
 
 		Eigen::MatrixXd x, h_fem, h_dec, h;
 		solveHeatProblem(tri, h_fem, h_dec);
+		//solveDirichletProblem(tri, h_fem, h_dec);
+
+		std::cout << "...write heat vals to file... " << std::endl;
 
 		std::string res_out_path = run_folder + run_name + "heatvals.csv";
 		std::ofstream feil;
@@ -332,11 +366,13 @@ int main(int argc, char *argv[])
 		for(int i=0; i < orbitinds.size() - 1; i++) feil << orbitinds[i] << ", ";
 		feil << orbitinds[orbitinds.size()-1] << std::endl;
 		feil << "h_fem" << ", " << "h_dec" << std::endl;
+
 		for (int r = 0; r < h_fem.rows(); ++r) {
 			feil << h_fem(r) << ", " << h_dec(r) << std::endl;
 		}
 		feil.close();
 
+		std::cout << "Finished the feil" << std::endl;
 
 		if (!silent) {
 			/* ################## SHOW  MESH ####################*/
