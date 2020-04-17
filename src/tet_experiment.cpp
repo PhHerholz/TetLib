@@ -42,16 +42,45 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Ei
 {
     const int cntr = tri.centerVertex();
     const int n = tri.mesh.number_of_vertices();
-    
+
+    // Construct A 
     Eigen::SparseMatrix<double> A_fem, A_dec, L_fem, L_dec, M;
-    tri.massMatrix(M);
+    //tri.massMatrix(M);
     tri.FEMLaplacian(L_fem);
-    tri.DECLaplacian(L_dec);
-    
+    tri.DECLaplacian(L_dec, &M);
     const double t = tri.meanEdgeLengthSquared();
     A_fem = M + t * L_fem;
 	A_dec = M - t * L_dec; 
-    
+
+    // solve the constrained problems
+    std::vector<int> boundary_indices = tri.surfaceVertices(); 
+    boundary_indices.push_back(cntr);
+
+    Eigen::MatrixXd B(n, 1); B.setZero();
+    Eigen::MatrixXd constrValues(boundary_indices.size(), 1);
+    constrValues.setZero();
+    constrValues(boundary_indices.size()-1, 0) = 1;
+
+    solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
+    solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
+
+    /*
+    // Get A_ii, A_ib
+    std::vector<int> boundary_indices = tri.surfaceVertices; 
+    boundary_indices.push_back(cntr);
+    std::vector<int> inner_indices;
+    for (it i=0; i<n; ++i) {
+        bool inner=true;
+        for (b_ind : boundary_indices) {
+        if (i == b_ind) inner_false;
+        }
+        if (inner) {
+            inner_indices.push_back(i); 
+        }
+    }
+    */
+   
+    /*
     Eigen::VectorXd bb(A_fem.cols());
     bb.setZero();
     bb(cntr) = 1.;
@@ -65,6 +94,7 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Ei
     chol_dec.analyzePattern(A_dec);
     chol_dec.factorize(A_dec);
     h_dec = chol_dec.solve(bb);
+    */
 }
 
 
@@ -206,7 +236,7 @@ int main(int argc, char *argv[])
 	}
 
 	// no gui output
-	bool silent = true;
+	bool silent = false;
 
 	CGALTriangulation<Kernel> tri;
 	int originind;
