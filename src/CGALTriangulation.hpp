@@ -51,6 +51,12 @@ public:
     // construct the DEC Laplacian, optionally together with the circumcentric mass matrix
     void
     DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
+
+	std::vector<char>
+	surfaceVertexFlag();
+
+    void
+    DECLaplacianMixed(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
     
     // construct FEM Laplacian
     void

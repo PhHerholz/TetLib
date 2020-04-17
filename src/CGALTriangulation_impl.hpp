@@ -715,6 +715,112 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
     }
 }
 
+template<class TKernel>
+std::vector<char>
+CGALTriangulation<TKernel>::surfaceVertexFlag()
+{
+  typedef typename Triangulation::Vertex_handle Vertex_handle;
+  std::vector<Vertex_handle> out;
+  mesh.finite_adjacent_vertices(mesh.infinite_vertex(), std::back_inserter(out));
+  std::vector<char> flag(mesh.number_of_vertices(), 0);
+  for(auto h : out) flag[h->info()] = 1;
+  return flag;
+}
+
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::DECLaplacianMixed(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M)
+{
+    std::vector<Eigen::Triplet<double>> triplets;
+    const int nv = mesh.number_of_vertices();
+    auto surfFlag = surfaceVertexFlag();
+    
+    std::vector<typename TKernel::Vector_3> vecs(mesh.number_of_vertices());
+    
+    if(M)
+    {
+        M->resize(nv, nv);
+        M->resizeNonZeros(nv);
+        
+        for(int i = 0; i < nv; ++i)
+        {
+            M->outerIndexPtr()[i] = i;
+            M->innerIndexPtr()[i] = i;
+            M->valuePtr()[i] = .0;
+        }
+        
+        M->outerIndexPtr()[nv] = nv;
+    }
+    
+    
+    std::vector<Point> pts(mesh.number_of_vertices());
+    
+    for(auto& h : mesh.finite_vertex_handles())
+        pts[h->info()] = h->point();
+    
+    
+    auto ccFace = [&](const int i, const int j, const int k)
+    {
+        char sm = surfFlag[i] + surfFlag[j] + surfFlag[k];
+        return sm == 0 ? CGAL::circumcenter(pts[i], pts[j], pts[k]) : CGAL::centroid(pts[i], pts[j], pts[k]);
+    };
+    
+    auto ccTet = [&](int tid[4])
+    {
+        char sm = surfFlag[tid[0]] + surfFlag[tid[1]] + surfFlag[tid[2]] + surfFlag[tid[3]];
+        return sm ? CGAL::centroid(pts[tid[0]], pts[tid[1]], pts[tid[2]], pts[tid[3]]) : CGAL::circumcenter(pts[tid[0]], pts[tid[1]], pts[tid[2]], pts[tid[3]]);;
+    };
+    
+    for(auto h : mesh.finite_cell_handles())
+    {
+        auto tet = mesh.tetrahedron(h);
+       
+        int tid[4]{
+            h->vertex(0)->info(),
+            h->vertex(1)->info(),
+            h->vertex(2)->info(),
+            h->vertex(3)->info()
+        };
+        
+        for(int i = 0; i < 4; ++i)
+            for(int j = 0; j < 4; ++j)
+                if( i != j )
+                {
+                    const int k = Triangulation::next_around_edge(i, j);
+                    
+                    auto cc = ccTet(tid);
+                    auto ccf = ccFace(tid[i], tid[j], tid[k]);
+                    auto cce = CGAL::circumcenter(tet[i], tet[j]);
+                    
+                    auto edge = tet[j] - tet[i];
+                    
+                    auto nrml = 0.5 * CGAL::cross_product(ccf - cce, cc - cce);
+                    double val = (nrml * edge) / edge.squared_length();
+                    
+                    
+                    const int r = h->vertex(i)->info();
+                    const int s = h->vertex(j)->info();
+                    
+                    if(M)
+                    {
+                        M->valuePtr()[r] += val * (edge * edge) / 6.;
+                        M->valuePtr()[s] += val * (edge * edge) / 6.;
+                    }
+                    
+                    triplets.emplace_back(r, r, -val);
+                    triplets.emplace_back(s, s, -val);
+                    
+                    triplets.emplace_back(r, s, val);
+                    triplets.emplace_back(s, r, val);
+                }
+    }
+        
+    L.resize(nv, nv);
+    L.setFromTriplets(triplets.begin(), triplets.end());
+}
+
+
 
 template<class TKernel>
 void
