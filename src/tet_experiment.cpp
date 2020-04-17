@@ -185,13 +185,15 @@ loadMeshWithOrbitpoints(CGALTriangulation<Kernel> &tri, std::vector<int> &orbiti
 	typedef CGALTriangulation<Kernel>::Vertex_handle Vertex_handle;
 	typedef CGALTriangulation<Kernel>::Point Point;
 
+	orbitinds.clear();
+
 	Point origin(0.,0.,0.);
 	int originind = -1;
 	
 	for (Vertex_handle vh: tri.mesh.finite_vertex_handles()) {
 		double dist = sqrt(CGAL::squared_distance(vh->point(), origin));		
-		std::cout << std::endl << vh->point() << std::endl;
-		std::cout << dist << std::endl;
+		//std::cout << std::endl << vh->point() << std::endl;
+		//std::cout << dist << std::endl;
 
 		if (dist < (1e-10)) {
 		// origin
@@ -253,7 +255,9 @@ int main(int argc, char *argv[])
 	while(std::getline(mNfile, line)) meshNames.push_back(line);
 	mNfile.close();
 
+	int run_idx = 0;
 	for(std::string run_name : meshNames) {
+		std::cout << "processing run " << run_idx+1 << "/" << meshNames.size() << ": "  << run_name << std::endl;
 
 		//std::string run_name = "Sphere_0.5_2_0_0_0_0_";
 		std::string filepath = run_folder + run_name + ".meshfile";
@@ -263,7 +267,8 @@ int main(int argc, char *argv[])
 			orbitinds.pop_back();
 			std::cout << "Origin ind: " << originind << std::endl;
 			std::cout << "Orbitinds: " << std::endl;
-			for(int i: orbitinds) std::cout << i << " " << std::endl;
+			for(int i: orbitinds) std::cout << i << " ";
+			std::cout << std::endl;
 		
 		} else {
 			std::cout << "Something went wrong loading the mesh" << std::endl;	
@@ -510,5 +515,6 @@ int main(int argc, char *argv[])
 				
 			viewer.launch();
 		}
+	run_idx++;
 	}
 }
