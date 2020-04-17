@@ -35,7 +35,8 @@ for i, run in enumerate(runs):
     use_lloyd = bool(int(splt[4]))
     use_perturb = bool(int(splt[5]))
     use_exude = bool(int(splt[6]))
-    n_flips  = int(splt[7])
+    min_orbitpoints  = int(splt[7])
+    n_flips  = int(splt[8])
 
     maxpointmove  = 0
 

@@ -388,10 +388,7 @@ int main(int argc, char *argv[])
     typedef CGALTriangulation<Kernel>::Point Point;
     
 	// sphere generation options (with default values)
-	int min_orbitpoints		=   10; 
-	int n_flips				=   0 ;
 	double  edgeprob		=   0.; 
-	double maxPointMove     =   0.001;
 
 	// #########################################
 	std::cout << "SPHERE CREATION" << std::endl;
@@ -410,7 +407,8 @@ int main(int argc, char *argv[])
 	if (atoi(argv[4])) mOptions.opt_lloyd   = true;
 	if (atoi(argv[5])) mOptions.opt_perturb = true;
 	if (atoi(argv[6])) mOptions.opt_exude   = true;
-	n_flips							= std::atoi(argv[7]);
+	int min_orbitpoints  	= std::atoi(argv[7]);
+	int n_flips				= std::atoi(argv[8]);
 
 	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 
