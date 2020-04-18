@@ -395,7 +395,7 @@ int main(int argc, char *argv[])
 	// #########################################
 
 	FILENAME_base = "Sphere_";
-	for (int i=0; i < argc-1; ++i) FILENAME_base += argv[i+1] + std::string("_");
+	for (int i=0; i < argc-2; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
 	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
 	meshingOptions mOptions;
@@ -409,6 +409,9 @@ int main(int argc, char *argv[])
 	if (atoi(argv[6])) mOptions.opt_exude   = true;
 	int min_orbitpoints  	= std::atoi(argv[7]);
 	int n_flips				= std::atoi(argv[8]);
+
+	bool silent=true;
+	if (atoi(argv[9])) silent = false;
 
 	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 
@@ -516,6 +519,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	
 	// #########################################
 	std::cout << "FLIPPING EDGES" << std::endl;
 	// #########################################
@@ -565,197 +569,199 @@ int main(int argc, char *argv[])
 	}
 	feil.close();
 
+	if (!silent) {
 
-	bool normalize=false;
-	double amips_max = 100;
-	if (!normalize) {
-		//normalize minangle by 70.5 deg
-		for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = cell_metrics[minangle][i] / 70.5;
-		// normalize amips using the heuristically chosen max val amips_max and the min value 3
-		for (int i=0; i < cell_metrics[amips].size(); i++) cell_metrics[amips][i] = (cell_metrics[amips][i] - 3) / amips_max;
-	} 
-
-
-	Eigen::MatrixXd cellcolors_volume; 
-	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[volume], true, cellcolors_volume);
-	cellcolors[volume] = cellcolors_volume;
-	Eigen::MatrixXd cellcolors_minangle; 
-	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[minangle], normalize, cellcolors_minangle);
-	cellcolors[minangle] = cellcolors_minangle;
-	Eigen::MatrixXd cellcolors_amips; 
-	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
-	cellcolors[amips] = cellcolors_amips;
+		bool normalize=false;
+		double amips_max = 100;
+		if (!normalize) {
+			//normalize minangle by 70.5 deg
+			for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = cell_metrics[minangle][i] / 70.5;
+			// normalize amips using the heuristically chosen max val amips_max and the min value 3
+			for (int i=0; i < cell_metrics[amips].size(); i++) cell_metrics[amips][i] = (cell_metrics[amips][i] - 3) / amips_max;
+		} 
 
 
+		Eigen::MatrixXd cellcolors_volume; 
+		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[volume], true, cellcolors_volume);
+		cellcolors[volume] = cellcolors_volume;
+		Eigen::MatrixXd cellcolors_minangle; 
+		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[minangle], normalize, cellcolors_minangle);
+		cellcolors[minangle] = cellcolors_minangle;
+		Eigen::MatrixXd cellcolors_amips; 
+		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
+		cellcolors[amips] = cellcolors_amips;
 
-    Point origin = Point(0., 0., 0.);
 
-    Eigen::MatrixXd x;
-    x.resize(tri.mesh.number_of_vertices(), 1);
-    x.setZero();
-  //  solveDirichletProblem(tri, x);
-    
-    std::cout << "done" << std::endl;
-    
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F;
 
-    double offset = 0.1;
-    
-    std::array<double, 4> plane{1,0,0,offset};
-	std::vector<std::vector<int>> cmreturn = tri.cutMesh(plane, V, F);
-	std::vector<int>  ids     = cmreturn[0];
-	faceids = cmreturn[1];
-	facecolors.resize(faceids.size(), 3);
-	for (int i =0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
-    
-    // Style
-    Eigen::Vector3d ambient(.1,.1,.1);
-    Eigen::Vector3d diffuse(.7,.7,.7);
-    Eigen::Vector3d specular(.9,.9,.9);
-    
-    // Init the viewer
-    igl::opengl::glfw::Viewer viewer;
-    
-    // Attach a menu plugin
-    igl::opengl::glfw::imgui::ImGuiMenu menu;
-    viewer.plugins.push_back(&menu);
-    
-    // Customize the menu
-    float iso = 0.5f;
-    bool orientation = false;
-    int dir = 0;
+		Point origin = Point(0., 0., 0.);
 
-	Metric metric = minangle;
-	static bool showValues = false;
-    
-    // Add content to the default menu window
-    menu.callback_draw_viewer_menu = [&]()
-    {
-        // Draw parent menu content
-        //   menu.draw_viewer_menu();
+		Eigen::MatrixXd x;
+		x.resize(tri.mesh.number_of_vertices(), 1);
+		x.setZero();
+	  //  solveDirichletProblem(tri, x);
 		
-        if (ImGui::CollapsingHeader("Presentation", ImGuiTreeNodeFlags_DefaultOpen))
-        {
-			Metric oldmetric = metric_shown;
-            ImGui::Combo("Metric", (int *)(&metric_shown), "MinAngle\0AMIPS\0Volume\0\0");
+		std::cout << "done" << std::endl;
+		
+		Eigen::MatrixXd V;
+		Eigen::MatrixXi F;
 
-			/*
-			if(ImGui::Checkbox("Show Metric Values", &showValues)) {
-				for(int i = 0; i < F.rows(); ++i) {
-					const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
-					viewer.data().add_label(FaceCenter,std::to_string(cell_metrics[metric][faceids[i]]));
-				}
-			} 
-			*/
-			//else {
-			//	viewer.data().clear_labels();	
-			//}
+		double offset = 0.1;
+		
+		std::array<double, 4> plane{1,0,0,offset};
+		std::vector<std::vector<int>> cmreturn = tri.cutMesh(plane, V, F);
+		std::vector<int>  ids     = cmreturn[0];
+		faceids = cmreturn[1];
+		facecolors.resize(faceids.size(), 3);
+		for (int i =0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+		
+		// Style
+		Eigen::Vector3d ambient(.1,.1,.1);
+		Eigen::Vector3d diffuse(.7,.7,.7);
+		Eigen::Vector3d specular(.9,.9,.9);
+		
+		// Init the viewer
+		igl::opengl::glfw::Viewer viewer;
+		
+		// Attach a menu plugin
+		igl::opengl::glfw::imgui::ImGuiMenu menu;
+		viewer.plugins.push_back(&menu);
+		
+		// Customize the menu
+		float iso = 0.5f;
+		bool orientation = false;
+		int dir = 0;
 
-			if (oldmetric != metric_shown){
-				facecolors.resize(faceids.size(), 3);
-				for (int i=0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
-				viewer.data().set_colors(facecolors);
+		Metric metric = minangle;
+		static bool showValues = false;
+		
+		// Add content to the default menu window
+		menu.callback_draw_viewer_menu = [&]()
+		{
+			// Draw parent menu content
+			//   menu.draw_viewer_menu();
+			
+			if (ImGui::CollapsingHeader("Presentation", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				Metric oldmetric = metric_shown;
+				ImGui::Combo("Metric", (int *)(&metric_shown), "MinAngle\0AMIPS\0Volume\0\0");
 
-				FILENAME = FILENAME_base + metric_names[metric_shown];
-			}
-		}
-        
-        // Add new group
-        if (ImGui::CollapsingHeader("Cut View", ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            double mi = -1.;
-            double ma = 1.;
-            double oldoffset = offset;
-            ImGui::DragScalar("cut offset", ImGuiDataType_Double, &offset, 0.1, &mi, &ma, "%.4f");
-            
-            int oldDir = dir;
-            ImGui::Combo("Direction", (int *)(&dir), "X\0Y\0Z\0\0");
-            
-            if(oldoffset != offset || dir != oldDir)
-            {
-                std::array<double, 4> plane{0,0,0,offset};
-                plane[dir] = 1;
-                
-                Eigen::MatrixXd V;
-                Eigen::MatrixXi F;
-                
-                cmreturn = tri.cutMesh(plane, V, F);
-				ids = cmreturn[0];
-				faceids = cmreturn[1];
-                
-                if(ids.size())
-                {
-                    viewer.data().clear();
-                    viewer.data().set_mesh(V, F);
+				/*
+				if(ImGui::Checkbox("Show Metric Values", &showValues)) {
+					for(int i = 0; i < F.rows(); ++i) {
+						const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
+						viewer.data().add_label(FaceCenter,std::to_string(cell_metrics[metric][faceids[i]]));
+					}
+				} 
+				*/
+				//else {
+				//	viewer.data().clear_labels();	
+				//}
 
+				if (oldmetric != metric_shown){
 					facecolors.resize(faceids.size(), 3);
 					for (int i=0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 					viewer.data().set_colors(facecolors);
-                    //viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
-                    //viewer.data(cutMeshId).show_texture = 1;
-					/*
-					if (showValues) {	
-						for(int i = 0; i < F.rows(); ++i) {
-							const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
-							viewer.data().add_label(FaceCenter,std::to_string(cell_metrics[metric][faceids[i]]));
-						}
-					} 
-					*/
-                    
-                    Eigen::VectorXd x2(ids.size());
-                    
-                    for(int i = 0; i < ids.size(); ++i)
-                        x2(i) = x(ids[i]);
-                    
-                    //  Eigen::MatrixXd color;
-                    //  igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, x2, false, color);
-                    //viewer.data().set_colors(color);
-                    
-					/*
-                    setTexture("../data/tex.png", viewer.data(cutMeshId));
-                    Eigen::MatrixXd UV(x2.rows(), 2);
-                    UV.col(0) = UV.col(1) = x2;
-                    viewer.data(cutMeshId).set_uv(UV);
-					*/
-                }
-            }
-        }
-    };
-    
-    
-    // Plot the mesh
-    viewer.data().set_mesh(V, F);
-	viewer.data().set_colors(facecolors);
-    viewer.core().background_color.setOnes();
 
-	viewer.callback_key_down = &key_down;
+					FILENAME = FILENAME_base + metric_names[metric_shown];
+				}
+			}
+			
+			// Add new group
+			if (ImGui::CollapsingHeader("Cut View", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				double mi = -1.;
+				double ma = 1.;
+				double oldoffset = offset;
+				ImGui::DragScalar("cut offset", ImGuiDataType_Double, &offset, 0.1, &mi, &ma, "%.4f");
+				
+				int oldDir = dir;
+				ImGui::Combo("Direction", (int *)(&dir), "X\0Y\0Z\0\0");
+				
+				if(oldoffset != offset || dir != oldDir)
+				{
+					std::array<double, 4> plane{0,0,0,offset};
+					plane[dir] = 1;
+					
+					Eigen::MatrixXd V;
+					Eigen::MatrixXi F;
+					
+					cmreturn = tri.cutMesh(plane, V, F);
+					ids = cmreturn[0];
+					faceids = cmreturn[1];
+					
+					if(ids.size())
+					{
+						viewer.data().clear();
+						viewer.data().set_mesh(V, F);
 
+						facecolors.resize(faceids.size(), 3);
+						for (int i=0; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+						viewer.data().set_colors(facecolors);
+						//viewer.data(cutMeshId).uniform_colors(ambient, diffuse, specular);
+						//viewer.data(cutMeshId).show_texture = 1;
+						/*
+						if (showValues) {	
+							for(int i = 0; i < F.rows(); ++i) {
+								const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
+								viewer.data().add_label(FaceCenter,std::to_string(cell_metrics[metric][faceids[i]]));
+							}
+						} 
+						*/
+						
+						Eigen::VectorXd x2(ids.size());
+						
+						for(int i = 0; i < ids.size(); ++i)
+							x2(i) = x(ids[i]);
+						
+						//  Eigen::MatrixXd color;
+						//  igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, x2, false, color);
+						//viewer.data().set_colors(color);
+						
+						/*
+						setTexture("../data/tex.png", viewer.data(cutMeshId));
+						Eigen::MatrixXd UV(x2.rows(), 2);
+						UV.col(0) = UV.col(1) = x2;
+						viewer.data(cutMeshId).set_uv(UV);
+						*/
+					}
+				}
+			}
+		};
 		
-	/* Add labels for debugging
-	for(int i = 0; i < F.rows(); ++i) {
-		const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
-		viewer.data().add_label(FaceCenter,std::to_string(faceids[i]));
+		
+		// Plot the mesh
+		viewer.data().set_mesh(V, F);
+		viewer.data().set_colors(facecolors);
+		viewer.core().background_color.setOnes();
+
+		viewer.callback_key_down = &key_down;
+
+			
+		/* Add labels for debugging
+		for(int i = 0; i < F.rows(); ++i) {
+			const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
+			viewer.data().add_label(FaceCenter,std::to_string(faceids[i]));
+		}
+		*/
+
+		//viewer.data().uniform_colors(ambient, diffuse, specular);
+		//viewer.data().show_texture = 1;
+		/*
+		setTexture("../data/tex.png", viewer.data());
+		Eigen::MatrixXd UV(V.rows(), 2);
+		viewer.data().set_uv(UV.setZero());
+		*/
+
+
+
+		viewer.core().trackball_angle.x() = 0.121685;
+		viewer.core().trackball_angle.y() = 0.335208;
+		viewer.core().trackball_angle.z() = 0.0437081;
+		viewer.core().trackball_angle.w() = 0.93323;
+
+		//screenshot(viewer, "dadada");
+
+		viewer.launch();
 	}
-	*/
-
-    //viewer.data().uniform_colors(ambient, diffuse, specular);
-    //viewer.data().show_texture = 1;
-	/*
-    setTexture("../data/tex.png", viewer.data());
-    Eigen::MatrixXd UV(V.rows(), 2);
-    viewer.data().set_uv(UV.setZero());
-	*/
-
-
-
-	viewer.core().trackball_angle.x() = 0.121685;
-	viewer.core().trackball_angle.y() = 0.335208;
-	viewer.core().trackball_angle.z() = 0.0437081;
-	viewer.core().trackball_angle.w() = 0.93323;
-
-	//screenshot(viewer, "dadada");
-
-    viewer.launch();
 
 }
