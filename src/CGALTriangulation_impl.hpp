@@ -1145,6 +1145,11 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  doub
 	if (flipped < num_flips) {
 		std::cout << "... only managed to perform " << flipped << "flips" << std::endl;
 	}
-	// reset vertex ids (old ones are no longer valid)
-	setIndizes();
+	// reset cell ids (old ones are no longer valid)
+
+    int cnt = 0;
+    for(auto h : mesh.finite_cell_handles()) {
+        h->info() = cnt++;
+    }
+
 }
