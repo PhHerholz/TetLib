@@ -21,7 +21,7 @@ for CERATIO in 2
 do
 #for FSIZE in 0.1 #0.05 0.1 0.25 0.5 0.75 1. 
 #do
-for NFLIPS in 250 500 750 1000 1250 1500 1750 2000 2250 2500 2750 3000 3250 3500 3750 4000 # 150 500 750 1000 1250 1500 1750 2000 2250 2500 2750 3000 5000 10000  #250 500 750 1000
+for NFLIPS in 0 #250 500 750 1000 1250 1500 1750 2000 2250 2500 2750 3000 3250 3500 3750 4000 # 150 500 750 1000 1250 1500 1750 2000 2250 2500 2750 3000 5000 10000  #250 500 750 1000
 do
 for OPTS in "000"
 do
@@ -48,7 +48,7 @@ fi
 mv build/out/*.meshfile build/out/plots/
 mv build/out/meshes.txt build/out/plots/
 
-FOLDERNAME="06_flips_r${REP}"
+FOLDERNAME="07_ex" #_r${REP}"
 
 echo $FOLDERNAME
 
@@ -62,6 +62,6 @@ cd build
 ./tet_experiment out/$FOLDERNAME/plots/
 cd ..
 
-rm build/out/$FOLDERNAME/plots/*.meshfile
+#rm build/out/$FOLDERNAME/plots/*.meshfile
 
 done
