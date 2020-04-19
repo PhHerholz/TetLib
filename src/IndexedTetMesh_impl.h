@@ -81,8 +81,7 @@ IndexedTetMesh::buildCgalMesh(TTriangulationDS& tds)
         ch->info() = cnt >= oldSize ? -1 : cnt++;
         cellHandles.push_back(ch);
     }
-    
-    
+
     const int NT = tetNeighbours.size();
     
     for(int i = 0; i < NT; ++i)

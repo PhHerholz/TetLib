@@ -14,6 +14,7 @@
 
 #include <imgui/imgui.h>
 #include <iostream>
+#include <random>
 
 #include <unsupported/Eigen/SparseExtra>
 #include <unsupported/Eigen/ArpackSupport>
@@ -35,8 +36,7 @@ typedef Kernel::Point_3 Point;
 
 
 #include <Eigen/Dense>
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/normal_distribution.hpp>    
+
 
 void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec)
 {
@@ -303,15 +303,18 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> orbit
 	std::random_device rd{};
     std::mt19937 gen{rd()};
     std::normal_distribution<> d{0, variance};
-	for (auto vh : tri.mesh.finite_vertex_handles()) {
+	
+    for (auto vh : tri.mesh.finite_vertex_handles()) {
 		points.push_back( std::make_pair(WPoint(vh->point(),fabs(d(gen) )),vh->info()) );
-	}
+    }
 
-
+    
 	Regular reg;
 	reg.insert(points.begin(), points.end());
 	std::cout << reg.is_valid() << std::endl;
 
+    reg.infinite_vertex()->info() = -1;
+    
 	/*
 	std::vector<Point> pts;
 	std::vector<int>   vinds;
@@ -411,10 +414,10 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> orbit
         if(it->info() != -1)
 		{
 			std::cout << it->info();
-            ret.tets.push_back(std::array<unsigned int, 4>{	idconversion[it->vertex(0)->info()], 
-															idconversion[it->vertex(1)->info()], 
-															idconversion[it->vertex(2)->info()], 
-															idconversion[it->vertex(3)->info()] });
+            ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int)idconversion[it->vertex(0)->info()],
+															(unsigned int)idconversion[it->vertex(1)->info()],
+															(unsigned int)idconversion[it->vertex(2)->info()],
+															(unsigned int)idconversion[it->vertex(3)->info()] });
 			std::cout << "-+" << std::endl;
 		}
 
@@ -429,6 +432,8 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> orbit
 
 	std::cout << "Converted Regular Delauney to IndexedTetmesh " << std::endl;
 
+    ret.write("../dbg.tet");
+    
 	CGALTriangulation<Kernel> newtri;
 	ret.convert(newtri);
 
