@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.1)
 
 project(tetlib)
 
+set(CGAL_DIR=~/src/cgal)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 # libigl
@@ -17,7 +18,7 @@ find_package(LIBIGL REQUIRED QUIET)
 
 
 file(GLOB LIB_SOURCES src/*.cpp )
-list(REMOVE_ITEM LIB_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh_generation.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/tet_experiment.cpp")
+list(REMOVE_ITEM LIB_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh_generation.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/tet_experiment.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh_viewer.cpp")
 
 message(${LIB_SOURCES})
 
@@ -30,3 +31,6 @@ target_link_libraries(mesh_generation TetLib igl::core igl::opengl_glfw igl::ope
 
 add_executable(tet_experiment "src/tet_experiment.cpp")
 target_link_libraries(tet_experiment TetLib igl::core igl::opengl_glfw igl::opengl_glfw_imgui igl::png CGAL::CGAL)
+
+add_executable(mesh_viewer "src/mesh_viewer.cpp")
+target_link_libraries(mesh_viewer TetLib igl::core igl::opengl_glfw igl::opengl_glfw_imgui igl::png CGAL::CGAL)
