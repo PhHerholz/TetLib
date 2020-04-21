@@ -211,6 +211,91 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     file.close();
 }
 
+void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance) {
+		
+	typedef CGAL::Regular_triangulation_vertex_base_3<Kernel> Vb0;
+	typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel, Vb0> VB;
+	typedef CGAL::Regular_triangulation_cell_base_3<Kernel> Cb0;
+	typedef typename CGAL::Triangulation_cell_base_with_info_3<int, Kernel, Cb0> CB;
+	typedef CGAL::Triangulation_data_structure_3<VB, CB>  TriangulationDS;
+	//typedef CGAL::Triangulation_3<Kernel, TriangulationDS_> Triangulation;
+	typedef CGAL::Regular_triangulation_3<Kernel, TriangulationDS> Regular;
+	typedef Kernel::Weighted_point_3 WPoint;
+	typedef Kernel::Point_3 Point;
+
+	/*
+	typedef typename CGAL::Triangulation_cell_base_with_info_3<int, Kernel> CB_;
+	typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel> VB_;
+	typedef CGAL::Triangulation_data_structure_3<VB_, CB_>  TriangulationDS_;
+	typedef CGAL::Delaunay_triangulation_3<Kernel, TriangulationDS_> Delaunay;
+	*/
+
+	std::random_device rd{};
+    std::mt19937 gen{rd()};
+    std::normal_distribution<> d{0, variance};
+	
+	std::vector< std::pair<WPoint,unsigned> > points;
+    for (auto vh : tri.mesh.finite_vertex_handles()) {
+		points.push_back( std::make_pair(WPoint(vh->point(),fabs(d(gen) )),vh->info()) );
+		//points.push_back( std::make_pair(WPoint(vh->point(), 0),vh->info()) );
+    }
+	Regular reg;
+
+	/* DELAUNAY SANITY CHECK
+	std::vector< std::pair<Point,unsigned> > points;
+    for (auto vh : tri.mesh.finite_vertex_handles()) {
+		points.push_back( std::make_pair(vh->point(),vh->info()) );
+		//points.push_back( std::make_pair(WPoint(vh->point(), 0),vh->info()) );
+    }
+	Delaunay reg;
+	*/
+
+	reg.insert(points.begin(), points.end());
+	std::cout << reg.is_valid() << std::endl;
+
+	//handle infos: (finite vertex infos have been set when inserting them)
+    reg.infinite_vertex()->info() = -1;
+	int cnt = 0;
+	for(auto it = reg.cells_begin(); it != reg.cells_end(); ++it)
+	{
+		if(reg.is_infinite(it)) it->info() = -1;
+		else it->info() = cnt++;
+	}
+
+	// Translate to IndexedTetmesh
+    IndexedTetMesh ret;
+	int nv = reg.number_of_vertices();
+
+	ret.vertices.resize(nv);
+	std::unordered_map<int, int> idconversion;
+
+	int inscounter = 0;
+    for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it)
+        if(it->info() != -1){
+			ret.vertices[inscounter][0] = it->point().x();
+			ret.vertices[inscounter][1] = it->point().y();
+			ret.vertices[inscounter][2] = it->point().z();
+			idconversion[it->info()] = inscounter;
+			inscounter++;
+		}
+
+    for(auto it: reg.finite_cell_handles()) // = reg.cells_begin(); it != reg.cells_end(); ++it)
+        if(it->info() != -1)
+		{
+            ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int)idconversion[it->vertex(0)->info()],
+															(unsigned int)idconversion[it->vertex(1)->info()],
+															(unsigned int)idconversion[it->vertex(2)->info()],
+															(unsigned int)idconversion[it->vertex(3)->info()] });
+		}
+    
+	CGALTriangulation<Kernel> newtri;
+	ret.convert(newtri);
+
+	// update
+	tri = newtri;
+}
+
+
 // SET GLOBAL TO HANDLE IN CALLBACKS
 enum Metric {minangle=0, amips, volume};
 std::string FILENAME_base = "";
@@ -309,6 +394,7 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
         if (dist <= dists[minind]) minind = v_ind;
         if (orbit_dist - eps <= dist  && dist < orbit_dist + eps ) {
             CGALTriangulation<Kernel>::Point normed_p = Point(a->point().x() / dist * orbit_dist, a->point().y() / dist * orbit_dist, a->point().z() / dist * orbit_dist);
+
 			// check that the move does not flip a cell:
 			std::vector<Cell_handle> oui;
 			tri.mesh.incident_cells(a, std::back_inserter(oui));
@@ -382,10 +468,38 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 }
 
 
+void normalizeSphereBorder(CGALTriangulation<Kernel> &tri) {
+	
+	typedef typename Kernel::Point_3 Point;
+	typedef typename CGALTriangulation<Kernel>::Vertex_handle Vertex_handle;
+
+	std::vector<Vertex_handle> out;
+	tri.mesh.finite_adjacent_vertices(tri.mesh.infinite_vertex(), std::back_inserter(out));
+	for (auto p : out) {
+		double length = sqrt(CGAL::squared_distance(Point(0., 0., 0.), p->point()));	
+		p->point() = Point(p->point().x() / length, p->point().y() / length, p->point().z() / length);
+	}
+
+	/*
+	for (auto p : tri.mesh.finite_vertex_handles()) {
+		double length = sqrt(CGAL::squared_distance(Point(0., 0., 0.), p->point()));	
+		if (fabs(1 - length) < 1e-3) {
+			std::cout << "ar" << std::endl;
+			//p->point() = Point(p->point().x() / length, p->point().y() / length, p->point().z() / length);
+			p->point() = Point(3., p->point().y() / length, p->point().z() / length);
+		}
+	}
+	*/
+
+}
+
+
 int main(int argc, char *argv[])
 {
     CGALTriangulation<Kernel> tri;
     typedef CGALTriangulation<Kernel>::Point Point;
+    typedef CGALTriangulation<Kernel>::Vertex_handle Vertex_handle;
+    typedef CGALTriangulation<Kernel>::Cell_handle  Cell_handle;
     
 	// sphere generation options (with default values)
 	double  edgeprob		=   0.; 
@@ -394,8 +508,8 @@ int main(int argc, char *argv[])
 	std::cout << "SPHERE CREATION" << std::endl;
 	// #########################################
 
-	FILENAME_base = "Sphere_";
-	for (int i=0; i < argc-2; ++i) FILENAME_base += argv[i+1] + std::string("_");
+	bool silent=true;
+	bool addorigin=false;
 
 	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
 	meshingOptions mOptions;
@@ -407,13 +521,119 @@ int main(int argc, char *argv[])
 	if (atoi(argv[4])) mOptions.opt_lloyd   = true;
 	if (atoi(argv[5])) mOptions.opt_perturb = true;
 	if (atoi(argv[6])) mOptions.opt_exude   = true;
-	int min_orbitpoints  	= std::atoi(argv[7]);
-	int n_flips				= std::atoi(argv[8]);
+	double regnoise = std::stod(argv[7]);
+	if (atoi(argv[8])) silent = false;
+	if (atoi(argv[9])) addorigin = true;
 
-	bool silent=true;
-	if (atoi(argv[9])) silent = false;
+	//int min_orbitpoints  	= std::atoi(argv[7]);
+	//int n_flips				= std::atoi(argv[8]);
+	int min_orbitpoints = -1;
+	int n_flips = 0;
 
-	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
+	// TODO: torus argument not working in meshpolyhedron
+	bool torus=false;
+	//if (atoi(argv[7])) torus = true;
+
+	FILENAME_base = "Sphere_";
+	if (torus) {
+		FILENAME_base = "Torus_";
+	}
+	for (int i=0; i < argc-2; ++i) FILENAME_base += argv[i+1] + std::string("_");
+
+	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions,torus);
+
+	if (!torus) {
+		normalizeSphereBorder(tri);	
+	}
+
+	if (regnoise > 0) {
+		// #########################################
+		std::cout << "Noise with Reg Triangulation" << std::endl;
+		// #########################################
+
+		// set variance st that the std deviation of the reg weights is in the magnitude of mels * rgnoise
+		double mels = tri.meanEdgeLengthSquared();
+		double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
+		//std::cout << "MELS: " << mels << std::endl;
+		//std::cout << "VAR : " << variance << std::endl;
+		//double variance = regnoise;
+
+		replaceMeshByRegular(tri, variance);
+	}
+	if (addorigin and min_orbitpoints < 0) {
+		// ###################################################
+		std::cout << "ADD ORIGIN AND ORIGIN ONLY" << std::endl;
+		// ###################################################
+
+		double mindist = std::numeric_limits<double>::max();
+		int    minind  = -1;
+		Vertex_handle minhandle;
+		Point origin = Point(0., 0., 0.);
+
+		// find closest point to origin
+		for (auto a: tri.mesh.finite_vertex_handles()) {
+			int v_ind = a->info();
+			double dist = sqrt(CGAL::squared_distance(origin, a->point()));
+			if (dist <= mindist){
+				minind = v_ind;
+				mindist = dist;
+				minhandle = a;
+			}
+		}
+
+		// check that moving the closest point to the origin doesn't flip a cell
+		std::vector<Cell_handle> oui;
+		tri.mesh.incident_cells(minhandle, std::back_inserter(oui));
+
+		bool allsamesign = true;
+		for (auto c: oui) {
+			Point p[4];
+			int vertex_ind_in_cell = -1;
+			for (int i = 0; i < 4; ++i) {
+				p[i] = c->vertex(i)->point();
+				if (p[i] == minhandle->point()) {
+					vertex_ind_in_cell = i;
+				}
+			}
+			Kernel::FT vpre  = CGAL::volume(p[0], p[1], p[2], p[3]);
+			p[vertex_ind_in_cell] = origin;
+			Kernel::FT vpost = CGAL::volume(p[0], p[1], p[2], p[3]);
+
+			bool samesign = (vpre < 0 && vpost < 0) || ( vpre>0 && vpost > 0) || (vpre == 0 && vpost == 0);
+			if (!samesign) allsamesign = false;
+		}
+
+		if (allsamesign) {
+			// good	
+			double dist = sqrt(CGAL::squared_distance(origin, minhandle->point()));
+			minhandle->point() = origin;
+			std::cout << "Moved the closed point to the origin, dist was " << dist << std::endl;
+			
+			std::ofstream omFile;
+			std::string originmovesfile= "out/origin_moves.csv";
+			omFile.open(originmovesfile, std::ios_base::app); // append instead of overwrite
+			omFile << FILENAME_base << ", " << dist << std::endl; 
+			omFile.close();
+
+		} else {
+			// bad
+			std::cout << "Error: moving the closest point to the origin would flip a cell!! " << std::endl;
+			std::ofstream omFile;
+			std::string originmovesfile= "out/origin_moves.csv";
+			omFile.open(originmovesfile, std::ios_base::app); // append instead of overwrite
+			omFile << FILENAME_base << ", ERROR - WOULD FLIP A CELL"<< std::endl; 
+			omFile.close();
+			return EXIT_FAILURE;
+		}
+
+	}
+
+	if (n_flips > 0) {
+		// #########################################
+		std::cout << "FLIPPING EDGES" << std::endl;
+		// #########################################
+		tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
+	}
 
 	if (min_orbitpoints >= 0) {
 		// #########################################
@@ -518,14 +738,6 @@ int main(int argc, char *argv[])
 		// -----------------------------------------------
 		}
 	}
-
-	
-	// #########################################
-	std::cout << "FLIPPING EDGES" << std::endl;
-	// #########################################
-
-	//std::cout << "... perform flips " << std::endl;
-	tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 
 	// #########################################
 	std::cout << "WRITE TO FILE"  << std::endl;
@@ -669,8 +881,8 @@ int main(int argc, char *argv[])
 			// Add new group
 			if (ImGui::CollapsingHeader("Cut View", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				double mi = -1.;
-				double ma = 1.;
+				double mi = -1.8;
+				double ma = 1.8;
 				double oldoffset = offset;
 				ImGui::DragScalar("cut offset", ImGuiDataType_Double, &offset, 0.1, &mi, &ma, "%.4f");
 				
