@@ -498,8 +498,6 @@ int main(int argc, char *argv[])
 {
     CGALTriangulation<Kernel> tri;
     typedef CGALTriangulation<Kernel>::Point Point;
-    typedef CGALTriangulation<Kernel>::Vertex_handle Vertex_handle;
-    typedef CGALTriangulation<Kernel>::Cell_handle  Cell_handle;
     
 	// sphere generation options (with default values)
 	double  edgeprob		=   0.; 
@@ -509,7 +507,6 @@ int main(int argc, char *argv[])
 	// #########################################
 
 	bool silent=true;
-	bool addorigin=false;
 
 	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
 	meshingOptions mOptions;
@@ -523,7 +520,6 @@ int main(int argc, char *argv[])
 	if (atoi(argv[6])) mOptions.opt_exude   = true;
 	double regnoise = std::stod(argv[7]);
 	if (atoi(argv[8])) silent = false;
-	if (atoi(argv[9])) addorigin = true;
 
 	//int min_orbitpoints  	= std::atoi(argv[7]);
 	//int n_flips				= std::atoi(argv[8]);
@@ -560,70 +556,53 @@ int main(int argc, char *argv[])
 
 		replaceMeshByRegular(tri, variance);
 	}
+
 	if (addorigin and min_orbitpoints < 0) {
-		// ###################################################
+		// #########################################
 		std::cout << "ADD ORIGIN AND ORIGIN ONLY" << std::endl;
-		// ###################################################
+		// #########################################
 
-		double mindist = std::numeric_limits<double>::max();
-		int    minind  = -1;
-		Vertex_handle minhandle;
-		Point origin = Point(0., 0., 0.);
-
-		// find closest point to origin
 		for (auto a: tri.mesh.finite_vertex_handles()) {
 			int v_ind = a->info();
-			double dist = sqrt(CGAL::squared_distance(origin, a->point()));
-			if (dist <= mindist){
-				minind = v_ind;
-				mindist = dist;
-				minhandle = a;
-			}
-		}
+			dist = sqrt(CGAL::squared_distance(origin, a->point()));
+			dists[v_ind] = dist;
+			if (dist <= dists[minind]) minind = v_ind;
+			if (orbit_dist - eps <= dist  && dist < orbit_dist + eps ) {
+				CGALTriangulation<Kernel>::Point normed_p = Point(a->point().x() / dist * orbit_dist, a->point().y() / dist * orbit_dist, a->point().z() / dist * orbit_dist);
 
-		// check that moving the closest point to the origin doesn't flip a cell
-		std::vector<Cell_handle> oui;
-		tri.mesh.incident_cells(minhandle, std::back_inserter(oui));
+				// check that the move does not flip a cell:
+				std::vector<Cell_handle> oui;
+				tri.mesh.incident_cells(a, std::back_inserter(oui));
 
-		bool allsamesign = true;
-		for (auto c: oui) {
-			Point p[4];
-			int vertex_ind_in_cell = -1;
-			for (int i = 0; i < 4; ++i) {
-				p[i] = c->vertex(i)->point();
-				if (p[i] == minhandle->point()) {
-					vertex_ind_in_cell = i;
+				bool allsamesign = true;
+				for (auto c: oui) {
+					Point p[4];
+					int vertex_ind_in_cell = -1;
+					for (int i = 0; i < 4; ++i) {
+						p[i] = c->vertex(i)->point();
+						if (p[i] == a->point()) {
+							vertex_ind_in_cell = i;
+						}
+					}
+					Kernel::FT vpre  = CGAL::volume(p[0], p[1], p[2], p[3]);
+					p[vertex_ind_in_cell] = normed_p;
+					Kernel::FT vpost = CGAL::volume(p[0], p[1], p[2], p[3]);
+
+					bool samesign = (vpre < 0 && vpost < 0) || ( vpre>0 && vpost > 0) || (vpre == 0 && vpost == 0);
+					if (!samesign) allsamesign = false;
+				}
+
+				if (allsamesign) {
+					double cb = sqrt(CGAL::squared_distance(normed_p, a->point())); 
+					std::cout << "...move orbitpoint " << v_ind <<" by " << cb << std::endl;
+					a->set_point(normed_p);
+					dists[v_ind] = sqrt(CGAL::squared_distance(origin, a->point()));
+					changed_inds.push_back(v_ind);
+					changed_by.push_back(cb);
+				} else {
+					std::cout << ".....skipped moving an orbitpoint (it would flip a cell)" << std::endl;	
 				}
 			}
-			Kernel::FT vpre  = CGAL::volume(p[0], p[1], p[2], p[3]);
-			p[vertex_ind_in_cell] = origin;
-			Kernel::FT vpost = CGAL::volume(p[0], p[1], p[2], p[3]);
-
-			bool samesign = (vpre < 0 && vpost < 0) || ( vpre>0 && vpost > 0) || (vpre == 0 && vpost == 0);
-			if (!samesign) allsamesign = false;
-		}
-
-		if (allsamesign) {
-			// good	
-			double dist = sqrt(CGAL::squared_distance(origin, minhandle->point()));
-			minhandle->point() = origin;
-			std::cout << "Moved the closed point to the origin, dist was " << dist << std::endl;
-			
-			std::ofstream omFile;
-			std::string originmovesfile= "out/origin_moves.csv";
-			omFile.open(originmovesfile, std::ios_base::app); // append instead of overwrite
-			omFile << FILENAME_base << ", " << dist << std::endl; 
-			omFile.close();
-
-		} else {
-			// bad
-			std::cout << "Error: moving the closest point to the origin would flip a cell!! " << std::endl;
-			std::ofstream omFile;
-			std::string originmovesfile= "out/origin_moves.csv";
-			omFile.open(originmovesfile, std::ios_base::app); // append instead of overwrite
-			omFile << FILENAME_base << ", ERROR - WOULD FLIP A CELL"<< std::endl; 
-			omFile.close();
-			return EXIT_FAILURE;
 		}
 
 	}
