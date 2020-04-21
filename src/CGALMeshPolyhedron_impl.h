@@ -172,11 +172,14 @@ sphere_function (const typename TKernel::Point_3& p, double rad)
 
 
 double tf (double x, double y, double z) {
-  double x2=x*x, y2=y*y, z2=z*z;
-  double x4=x2*x2, y4=y2*y2, z4=z2*z2;
-
-  return x4  + y4  + z4  + 2 *x2*  y2  + 2*
-    x2*z2  + 2*y2*  z2  - 5 *x2  + 4* y2  - 5*z2+4;
+	double r = .5;
+	double R = 1;
+	double x2=x*x, y2=y*y, z2=z*z;
+	double r2=r*r;
+	//double x4=x2*x2, y4=y2*y2, z4=z2*z2;
+	// return x4  + y4  + z4  + 2 *x2*  y2  + 2* x2*z2  + 2*y2*  z2  - 5 *x2  + 4* y2  - 5*z2+4;
+	
+	return pow(sqrt(x2 + y2) - R, 2) + z2 - r2;
 }
 
 template<class TKernel>
@@ -188,14 +191,12 @@ struct meshingOptions {
     meshingOptions() : cell_size(0.1),
 					   cell_radius_edge_ratio(2.),
 					   facet_size(0.1),
-					   n_orbitpoints(-1), 
 					   opt_lloyd(false),
 					   opt_perturb(false), 
 					   opt_exude(false)  {}
 	double cell_size;
 	double cell_radius_edge_ratio;
 	double facet_size;
-	int n_orbitpoints;
 	bool opt_lloyd;
 	bool opt_perturb;
 	bool opt_exude;
@@ -203,7 +204,7 @@ struct meshingOptions {
 
 template<class TKernel>
 void 
-meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
+meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, bool use_torus)
 {
     using namespace CGAL;
     using namespace CGAL::parameters;
@@ -211,53 +212,39 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	//typedef typename TKernel Kernel;
     typedef typename TKernel::FT FT;
     typedef typename TKernel::Point_3 Point;
-	//typedef typename CGAL::Labeled_mesh_domain_3<TKernel> Mesh_domain;
-	typedef CGAL::Mesh_domain_with_polyline_features_3< CGAL::Labeled_mesh_domain_3<TKernel> > Mesh_domain;
+	typedef FT (Function)(const Point&);
+
+	//typedef CGAL::Mesh_domain_with_polyline_features_3< CGAL::Labeled_mesh_domain_3<TKernel> > Mesh_domain;
+	typedef CGAL::Labeled_mesh_domain_3<TKernel> Mesh_domain;
     typedef typename CGAL::Mesh_triangulation_3<Mesh_domain,CGAL::Default, CGAL::Sequential_tag>::type Tr;
 	typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> C3t3;
     typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> TMesh;
     typedef typename CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 
-	std::vector<Point> addPoints;
-	if (mOptions.n_orbitpoints >= 0) {
-		// add the origin 
-		Point origin = Point(0., 0., 0.);
-		addPoints.push_back(origin);
+	std::cout << "USE TORUS: " << use_torus << std::endl;
 
-		// add orbit points (on a mini sphere inside the other one)
-		Eigen::MatrixXd orbitpoints = randomPoints(mOptions.n_orbitpoints);
-		double orbit_height = 0.5;
-		for(int i=0; i< orbitpoints.cols(); i++){
-			double vecnorm = orbitpoints.col(i).norm();
-			addPoints.push_back(Point(orbitpoints(0,i) / vecnorm * orbit_height, 
-									  orbitpoints(1,i) / vecnorm * orbit_height, 
-									  orbitpoints(2,i) / vecnorm * orbit_height));
-		}
-	}
-
-	//Mesh domain (sphere)
-	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain( 
-											[](Point p)->double{return sphere_function<TKernel>(p, 1.);}, //torus_fun<TKernel>,
+	//Mesh_domain domain;
+	//if (!use_torus) {
+		// SPHERE
+	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain(
+										[](Point p)->double{return sphere_function<TKernel>(p, 1.);},
+										typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.)
+										);
+	/*
+	if (use_torus) {
+		domain = Mesh_domain::create_implicit_mesh_domain(
+											torus_fun<TKernel>,
 											typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.));
+	}
+	*/
 
 	/*
-	// adaptive sizing field:
-	// Sizing field
-	struct Spherical_sizing_field
-	{
-	  FT operator()(const Point& p, const int, const typename Mesh_domain::Index&) const
-	  {
-		FT sq_d_to_origin = CGAL::squared_distance(p, Point(-2, -2, -2));
-		return CGAL::abs( CGAL::sqrt(sq_d_to_origin)-0.5 ) / 5. + 0.025; 
-	  }
-	};
-	*/
-	typedef FT (Function)(const Point&);
-
+	std::cout << "Using a sizing field" << std::endl;
     // Sizing field
     struct Spherical_sizing_field
     {
-        typedef Point Point_3;
+		//typedef ::FT FT;
+		typedef Point Point_3;
         typedef typename Mesh_domain::Index Index;
 
         FT operator()(const Point_3& p, const int, const Index&) const
@@ -267,20 +254,13 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
         }
     };
 
-	//Spherical_sizing_field cell_size;
-
-	// negative number of orbit points means not to add the origin eather
-	//add origin and orbit points as 0-dim features (called corners)
-	if (mOptions.n_orbitpoints >= 0) domain.add_corners(addPoints.begin(), addPoints.end());
-
-	/*
-	// Mesh criteria
-	Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025, cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=cellSize_field); // mOptions.cell_size);
-	*/
     Spherical_sizing_field size;
 	Mesh_criteria criteria(facet_angle=30, facet_size=mOptions.facet_size, facet_distance=0.025,
+                         cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=size);
+						 */
+
+	Mesh_criteria criteria(facet_angle=30, facet_size=mOptions.facet_size, facet_distance=0.025,
                          cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=mOptions.cell_size);
-  
 
 	// Mesh generation 
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, 
@@ -291,34 +271,14 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
-
-	/*
-	std::cout << "Looking for the 0d features after opt" << std::endl;
-	int found_addpoints = 0;
-	bool found_origin   = false;
-	for (auto a: indexed.vertices) {
-		for (auto p: addPoints) {
-			if (p.x() == a[0] && p.y() == a[1] && p.z() == a[2]){
-				if (p.x() == 0. && p.y() == 0. and p.z() == 0.) {
-					found_origin=true;
-				} else {
-					++found_addpoints;	
-				}
-			}
-		}
-	}
-	std::cout << "Found " << found_addpoints << "/" << mOptions.n_orbitpoints << " orbitpoints" << std::endl;
-	std::cout << (found_origin?"origin found":"ERROR: origin LOST") << std::endl;
-	*/
-
 }
 
 template<class TKernel2, class TKernel>
 void
-meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions)
+meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, bool use_torus)
 {
     IndexedTetMesh indexed;
-    meshSphere<TKernel2>(indexed, mOptions);
+    meshSphere<TKernel2>(indexed, mOptions, use_torus);
     indexed.convert(tri);
 }
 
