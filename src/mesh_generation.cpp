@@ -211,7 +211,7 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     file.close();
 }
 
-void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance) {
+void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance, std::vector<int> &orbitinds, int &originind) {
 		
 	typedef CGAL::Regular_triangulation_vertex_base_3<Kernel> Vb0;
 	typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel, Vb0> VB;
@@ -293,6 +293,26 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance) {
 
 	// update
 	tri = newtri;
+
+	// convert origin and orbit indices
+	if (originind >= 0) {
+		int new_originind = -1;
+		if (idconversion.find(originind) != idconversion.end()) {
+			new_originind = idconversion[originind];
+		} else {
+			std::cout << "origin lost during noising" << std::endl;	
+		}
+		originind = new_originind;
+	}
+
+	std::vector<int> new_orbitinds;
+	for (int i: orbitinds) {
+		if (idconversion.find(i) != idconversion.end()) {
+			new_orbitinds.push_back(idconversion[i]);	
+		}
+	}
+	orbitinds = new_orbitinds;
+
 }
 
 
@@ -371,7 +391,7 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier
 }
 
 bool
-adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &changed_inds, std::vector<double> &changed_by, double orbit_dist =.5, double eps=.001) {
+adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &changed_inds, std::vector<double> &changed_by, double orbit_dist =.5, double epsfactor=.1) {
 
 	int nv = tri.mesh.number_of_vertices();
     std::vector<double> dists(nv, 0.);
@@ -384,6 +404,9 @@ adjustPointsOriginAndOrbit(CGALTriangulation<Kernel> &tri, std::vector<int> &cha
 
     double dist;
     int minind = 0;
+
+	double mean_edge_length = sqrt(tri.meanEdgeLengthSquared());
+	double eps = epsfactor * mean_edge_length;
 
     // Go through all points and set the points that lie in the orbit region to the orbit distance
     // Also save the index of the point closest to the origin to set it exactly to the origin later
@@ -521,8 +544,11 @@ int main(int argc, char *argv[])
 	double regnoise = std::stod(argv[7]);
 	if (atoi(argv[8])) silent = false;
 
+	bool addOrbitpointsMEL = true;
+
 	//int min_orbitpoints  	= std::atoi(argv[7]);
 	//int n_flips				= std::atoi(argv[8]);
+	bool addorigin = false;
 	int min_orbitpoints = -1;
 	int n_flips = 0;
 
@@ -542,7 +568,38 @@ int main(int argc, char *argv[])
 		normalizeSphereBorder(tri);	
 	}
 
-	if (regnoise > 0) {
+	int origin_ind = -1;
+	double origin_changedby=-1;
+	std::vector<int> orbit_indices;
+	std::vector<double> orbit_changedby;
+
+	if (addOrbitpointsMEL) {
+		// #########################################
+		std::cout << "Add origin and orbitpoints ifo MEL" << std::endl;
+		// #########################################
+		adjustPointsOriginAndOrbit(tri, orbit_indices, orbit_changedby);
+		std::cout << "Added " << orbit_indices.size() - 1 << " orbitpoints (MELMELMEL)" << std::endl;
+
+		origin_ind = orbit_indices[orbit_indices.size()-1];
+		origin_changedby = orbit_changedby[orbit_indices.size()-1];
+		orbit_indices.pop_back();
+		orbit_changedby.pop_back();
+
+		// Write orbitpoints and amount they were moved to a file
+		std::ofstream feil;
+		feil.open("out/" + FILENAME_base + "orbitpoints.csv");
+		feil << "orbit_idx" << ", " << "moved_by" << std::endl;
+		// add origin
+		feil << origin_ind << ", " << origin_changedby << std::endl;
+		// add orbitpoints
+		for (int i=0; i < orbit_indices.size(); ++i) {
+			feil      << orbit_indices[i] << ", " << orbit_changedby[i] << std::endl; 		
+		}
+		feil.close();
+
+	}
+
+	if (regnoise >= 0) {
 		// #########################################
 		std::cout << "Noise with Reg Triangulation" << std::endl;
 		// #########################################
@@ -554,10 +611,32 @@ int main(int argc, char *argv[])
 		//std::cout << "VAR : " << variance << std::endl;
 		//double variance = regnoise;
 
-		replaceMeshByRegular(tri, variance);
+		double origin_ind_pre = origin_ind;
+		std::vector<int> orbit_indices_pre = orbit_indices;
+		replaceMeshByRegular(tri, variance, orbit_indices, origin_ind);
+
+		std::cout << "Origin index pre : " << origin_ind_pre << std::endl;
+		std::cout << "Origin index post: " << origin_ind     << std::endl;
+
+		std::cout << "Orbit indices.size pre : " << orbit_indices_pre.size() << std::endl;
+		std::cout << "Orbit indices.size post: " << orbit_indices.size()     << std::endl;
+
+		// Write orbitpoints and amount they were moved to a file
+		std::ofstream feil;
+		feil.open("out/" + FILENAME_base + "orbitpoints.csv");
+		feil << "orbit_idx" << ", " << "moved_by" << std::endl;
+		// add origin
+		feil << origin_ind << ", " << origin_changedby << std::endl;
+		// add orbitpoints
+		for (int i=0; i < orbit_indices.size(); ++i) {
+			feil      << orbit_indices[i] << ", " << orbit_changedby[i] << std::endl; 		
+		}
+		feil.close();
 	}
 
-	if (addorigin and min_orbitpoints < 0) {
+	/*
+	if (false) {
+	//if (addorigin and min_orbitpoints < 0) {
 		// #########################################
 		std::cout << "ADD ORIGIN AND ORIGIN ONLY" << std::endl;
 		// #########################################
@@ -606,15 +685,18 @@ int main(int argc, char *argv[])
 		}
 
 	}
+	*/
 
-	if (n_flips > 0) {
+	if (false) {
+	//if (n_flips > 0) {
 		// #########################################
 		std::cout << "FLIPPING EDGES" << std::endl;
 		// #########################################
 		tri.performRandomFlips(n_flips, 2*n_flips, edgeprob);
 	}
 
-	if (min_orbitpoints >= 0) {
+	if (false) {
+	//if (min_orbitpoints >= 0) {
 		// #########################################
 		std::cout << "GENERATE ORBIT POINTS" << std::endl;
 		// #########################################
@@ -622,10 +704,8 @@ int main(int argc, char *argv[])
 		std::cout << "Start with an epsilon of cellSize^(1_3) / 500" << std::endl;
 		double epsilon = cbrt(cellSize) / 500;
 
-		int origin_ind = -1;
-		double origin_changedby=-1;
-		std::vector<int> orbit_indices;
-		std::vector<double> orbit_changedby;
+		origin_ind = -1;
+		origin_changedby=-1;
 		std::vector<int> changed_indices;
 		std::vector<double> changed_by;
 
