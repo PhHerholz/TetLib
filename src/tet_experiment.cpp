@@ -284,7 +284,7 @@ double rand_normal(double mean, double stddev)
 }
 
 
-void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> orbitinds, float variance) {
+void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> &orbitinds, int originind, double variance) {
 		
 	typedef CGAL::Regular_triangulation_vertex_base_3<Kernel> Vb0;
 	typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel, Vb0> VB;
@@ -297,7 +297,6 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> orbit
 	//typedef CGAL::Triangulation_3<Kernel, TriangulationDS_> Triangulation;
 	typedef CGAL::Regular_triangulation_3<Kernel, TriangulationDS> Regular;
 	typedef Kernel::Weighted_point_3 WPoint;
-
 
 	std::vector< std::pair<WPoint,unsigned> > points;
 	std::random_device rd{};
@@ -369,8 +368,8 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> orbit
     }
 
 
-	std::cout << "Inserted " << std::endl;
-	std::cout << " Isvalid: " << reg.is_valid() << std::endl;
+	//std::cout << "Inserted " << std::endl;
+	//std::cout << " Isvalid: " << reg.is_valid() << std::endl;
 
 	cnt = 0;
 	for(auto it = reg.cells_begin(); it != reg.cells_end(); ++it)
@@ -379,22 +378,26 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> orbit
 		else it->info() = cnt++;
 	}
 	// tri.mesh = reg;
-	std::cout << "Converted Mesh to a basic Regular Delaunay" << std::endl;
+	//std::cout << "Converted Mesh to a basic Regular Delaunay" << std::endl;
 
+	/*
     for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it) {
 		std::cout << it->info() << " ";//  << std::endl;	
 	}
 	std::cout << std::endl;	
+	*/
 
 	//CGAL::draw(reg);
 
     IndexedTetMesh ret;
 	int nv = reg.number_of_vertices();
-	std::cout << "NV: " << nv << std::endl;
+	//std::cout << "NV: " << nv << std::endl;
 
 	ret.vertices.resize(nv);
 
 	std::unordered_map<int, int> idconversion;
+
+	bool contains_origin = false;
     
 	int inscounter = 0;
     for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it)
@@ -405,34 +408,51 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> orbit
 			idconversion[it->info()] = inscounter;
 			inscounter++;
             //ret.vertices.push_back(std::array<double, 3>{it->point().x(), it->point().y(), it->point().z()});
+
+			if (it->info() == originind) {
+				std::cout << "ORIGIN IN !!!!!!!!!!!!!!!!!!!!!!!! " << std::endl;
+				contains_origin=true;
+			}
 		}
 
-	std::cout << "Reg Vertices: " << ret.vertices.size() << std::endl;
-	std::cout << "Finite Cells: " << reg.number_of_finite_cells() << std::endl;
+	//std::cout << "Reg Vertices: " << ret.vertices.size() << std::endl;
+	//std::cout << "Finite Cells: " << reg.number_of_finite_cells() << std::endl;
 
     for(auto it: reg.finite_cell_handles()) // = reg.cells_begin(); it != reg.cells_end(); ++it)
         if(it->info() != -1)
 		{
-			std::cout << it->info();
+			//std::cout << it->info();
             ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int)idconversion[it->vertex(0)->info()],
 															(unsigned int)idconversion[it->vertex(1)->info()],
 															(unsigned int)idconversion[it->vertex(2)->info()],
 															(unsigned int)idconversion[it->vertex(3)->info()] });
-			std::cout << "-+" << std::endl;
+			//std::cout << "-+" << std::endl;
 		}
 
-	std::cout << "built map" << std::endl;
+	//std::cout << "built map" << std::endl;
 
 	std::vector<int> new_orbitinds;
 	for (int i: orbitinds) {
 		if (idconversion.find(i) != idconversion.end()) {
 			new_orbitinds.push_back(idconversion[i]);	
+
+			std::cout << "wrr" << std::endl;
+			std::cout << (idconversion.find(i) != idconversion.end() ) << std::endl;
 		}
 	}
 
-	std::cout << "Converted Regular Delauney to IndexedTetmesh " << std::endl;
+	if (contains_origin) {
+		int new_originind = idconversion[originind];
+		std::cout << "New originind: " << new_originind << std::endl;
+	} else {
+		std::cout << "ARGH " << idconversion[originind] << std::endl;	
+		std::cout << (idconversion.find(originind) == idconversion.end()) << std::endl;
+		std::cout << (idconversion[-4]) << std::endl;
+	}
 
-    ret.write("../dbg.tet");
+	//std::cout << "Converted Regular Delauney to IndexedTetmesh " << std::endl;
+
+    //ret.write("../dbg.tet");
     
 	CGALTriangulation<Kernel> newtri;
 	ret.convert(newtri);
@@ -449,24 +469,49 @@ int main(int argc, char *argv[])
 {
 
 	if (argc < 2) {
-		std::cout << "usage: argv[0] run_folder" << std::endl;
+		std::cout << "usage: argv[0] run_folder variance r_postfix (1 for gui output)" << std::endl;
 		return 0;
 	}
 
+	double variance;
+	std::string run_postfix = "";
 	// no gui output
-	bool silent = false;
+	bool silent = true;
+
+	// no calculations, only show mesh
+	bool viewer_only=false;
+	std::string run_folder = argv[1];
+
+	if (argc >= 3) {
+		variance = std::stod(argv[2]);
+		if (variance > 1e-10) {
+			std::cout << "Variance specified" << std::endl;
+			run_postfix += std::to_string(variance) + std::string("_"); 
+		}
+	}
+
+	if (argc >= 4){
+	run_postfix += argv[3] + std::string("_"); 
+	//run_postfix += "_";	
+	}
+
+	if (argc >= 5) {
+		if (atoi(argv[4])) silent = false;
+	}
+	bool meshwrite_only = false;
+	if (argc >= 6) {
+		if (atoi(argv[5])) meshwrite_only = true;
+	}
 
 	CGALTriangulation<Kernel> tri;
 	int originind;
 	std::vector<int> orbitinds;
-	std::string run_folder = argv[1];
-
 
 	std::string meshNamesFile= run_folder + "meshes.txt";
 	std::vector<std::string> meshNames;
 
 	std::ifstream mNfile;
-	mNfile.open(meshNamesFile); // append instead of overwrite
+	mNfile.open(meshNamesFile); 
 	std::string line;
 	while(std::getline(mNfile, line)) meshNames.push_back(line);
 	mNfile.close();
@@ -475,7 +520,6 @@ int main(int argc, char *argv[])
 	for(std::string run_name : meshNames) {
 		std::cout << "processing run " << run_idx+1 << "/" << meshNames.size() << ": "  << run_name << std::endl;
 
-		//std::string run_name = "Sphere_0.5_2_0_0_0_0_";
 		std::string filepath = run_folder + run_name + ".meshfile";
 
 		if(loadMeshWithOrbitpoints(tri, orbitinds, filepath)) {
@@ -490,21 +534,38 @@ int main(int argc, char *argv[])
 			std::cout << "Something went wrong loading the mesh" << std::endl;	
 		}
 
+		if (variance > 0) {
+			// #################################
+			// Replace by regular triangulation
+			// #################################
+			
+			std::cout << "Old orbitinds size: " << orbitinds.size() << std::endl;
+			std::cout << "Old orbitinds: ";
+			for (int i : orbitinds ) std::cout << i << " ";
+			std::cout << std::endl;
+			replaceMeshByRegular(tri, orbitinds, originind, variance);
+			std::cout << "New orbitinds size: " << orbitinds.size() << std::endl;
+			std::cout << "New orbitinds: ";
+			for (int i : orbitinds ) std::cout << i << " ";
+			std::cout << std::endl;
 
-		// #################################
-		// Replace by regular triangulation
-		// #################################
-		
-		std::cout << "Old orbitinds size: " << orbitinds.size() << std::endl;
-		float variance = 0.01;
-		replaceMeshByRegular(tri, orbitinds, variance);
-		std::cout << "New orbitinds size: " << orbitinds.size() << std::endl;
+			std::cout << "-------------------------------------" << std::endl;
+			std::cout << run_name << std::endl;
+			std::cout << "MELS: " << tri.meanEdgeLengthSquared() << std::endl;
+			std::cout << "-------------------------------------" << std::endl;
+
+			if (meshwrite_only) {
+				std::string outfile = run_folder + run_name  + run_postfix + ".meshfile";
+				tri.write(outfile);
+				continue;
+			}
+		}
 
 		// #########################################
 		std::cout << "METRICS"  << std::endl;
 		// #########################################
 		enum Metric {minangle=0, amips, volume};
-		Eigen::MatrixXd facecolors;
+		Eigen::MatrixXd facecolors, x;
 		std::map<Metric, Eigen::MatrixXd> cellcolors;
 		std::vector<int>  faceids; 
 		Metric metric_shown;
@@ -525,6 +586,8 @@ int main(int argc, char *argv[])
 		cell_metrics[minangle]=Minang;
 		cell_metrics[amips]=Amips;
 
+		std::cout << "clcd" << std::endl;
+
 		bool normalize=false;
 		double amips_max = 100;
 		if (!normalize) {
@@ -544,20 +607,22 @@ int main(int argc, char *argv[])
 		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
 		cellcolors[amips] = cellcolors_amips;
 
+		std::cout << "Viewer stuff " << std::endl;
+
+		/* ################## HEAT DIFFUSION ################ */
+
 		if (orbitinds.size() < 1) {
 			std::cout << "No orbit points in file, abort" << std::endl;	
 			return 0;
 		}
 
-		/* ################## HEAT DIFFUSION ################ */
-
-		Eigen::MatrixXd x, h_fem, h_dec, h;
+		Eigen::MatrixXd h_fem, h_dec, h;
 		solveHeatProblem(tri, h_fem, h_dec);
 		//solveDirichletProblem(tri, h_fem, h_dec);
 
 		std::cout << "...write heat vals to file... " << std::endl;
 
-		std::string res_out_path = run_folder + run_name + "heatvals.csv";
+		std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
 		std::ofstream feil;
 		feil.open(res_out_path);
 		feil << "origin index"  << std::endl;
@@ -574,11 +639,11 @@ int main(int argc, char *argv[])
 
 		std::cout << "Finished the feil" << std::endl;
 
+		// normalize the heat values:
+		x = normalizeHeatValues(h_dec);
+
 		if (!silent) {
 			/* ################## SHOW  MESH ####################*/
-
-			// normalize the heat values:
-			x = normalizeHeatValues(h_dec);
 
 
 			Eigen::MatrixXd V;
@@ -624,7 +689,7 @@ int main(int argc, char *argv[])
 
 			Metric metric = minangle;
 			static bool showValues = false;
-			static bool showHeat   = true;
+			static bool showHeat   = false;
 
 			// Add content to the default menu window
 			menu.callback_draw_viewer_menu = [&]()
@@ -690,14 +755,14 @@ int main(int argc, char *argv[])
 								viewer.data().set_colors(facecolors);
 							} else {
 
-							Eigen::VectorXd x2(ids.size());
-							for(int i = 0; i < ids.size(); ++i)
-								x2(i) = x(ids[i]);
+								Eigen::VectorXd x2(ids.size());
+								for(int i = 0; i < ids.size(); ++i)
+									x2(i) = x(ids[i]);
 
 
-							Eigen::MatrixXd color;
-							igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, x2, false, color);
-							viewer.data().set_colors(color);
+								Eigen::MatrixXd color;
+								igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, x2, false, color);
+								viewer.data().set_colors(color);
 							
 							}
 
@@ -747,8 +812,6 @@ int main(int argc, char *argv[])
 			
 			}
 			*/
-
-				
 			viewer.launch();
 		}
 	run_idx++;
