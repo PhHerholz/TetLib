@@ -963,6 +963,32 @@ CGALTriangulation<TKernel>::umbrellaLaplacian(Eigen::SparseMatrix<double>& L)
     L.setFromTriplets(triplets.begin(), triplets.end());
 }
 
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::calcMinDECEdgeContributionAllCells(Eigen::VectorXd &A) {
+
+
+	Eigen::SparseMatrix<double> L;
+	DECLaplacianMixed(L);
+
+	A.resize(mesh.number_of_finite_cells());
+	double minval, val;
+
+    for(auto h : mesh.finite_cell_handles())
+    {
+		minval = std::numeric_limits<double>::max();
+		//iterate over edges
+		for(int i=0; i<3; i++){
+			for (int j=i+1; j<4; j++) {
+				// edge i-j
+				val = L.coeff(h->vertex(i)->info(), h->vertex(j)->info());
+				if (val < minval) minval = val;
+			}	
+		}
+		A(h->info()) = minval;
+	}
+}
+
 
 template<class TKernel>
 void

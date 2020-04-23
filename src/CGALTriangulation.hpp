@@ -93,6 +93,8 @@ public:
 
 	// retrieve some mesh metrics for each cell
 	void
+	calcMinDECEdgeContributionAllCells(Eigen::VectorXd &V);
+	void
 	calcMinAngleAllCells(Eigen::VectorXd &V);
 	void
 	calcVolumeAllCells(Eigen::VectorXd &V);
