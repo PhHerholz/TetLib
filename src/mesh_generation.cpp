@@ -211,7 +211,7 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& x)
     file.close();
 }
 
-void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance, std::vector<int> &orbitinds, int &originind) {
+void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only) {
 		
 	typedef CGAL::Regular_triangulation_vertex_base_3<Kernel> Vb0;
 	typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel, Vb0> VB;
@@ -279,14 +279,52 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance, std::
 			inscounter++;
 		}
 
-    for(auto it: reg.finite_cell_handles()) // = reg.cells_begin(); it != reg.cells_end(); ++it)
-        if(it->info() != -1)
+	std::cout << "###############################################################" << std::endl;
+	std::cout << "BouNDARY only: " << boundary_only << std::endl;
+	std::cout << "###############################################################" << std::endl;
+
+    for(auto it: reg.finite_cell_handles()){ // = reg.cells_begin(); it != reg.cells_end(); ++it)
+
+		bool addCell = true;
+
+		// check each cell if (!boundary_only):
+		bool checkvolcell = false;
+		if (!boundary_only){
+			std::cout << "Check all Cells" << std::endl;		
+			checkvolcell = true;
+		}
+
+		// if boundary only: check if cell is on boundary
+		if (!checkvolcell) {
+			for (int i = 0; i < 4 ; ++i) {
+				if (reg.mirror_vertex(it, i)->info() == -1) {
+					//std::cout << "Boundary cell " << std::endl;
+					checkvolcell = true;
+				}
+			}
+		}
+
+		if (checkvolcell) {
+			auto tet = reg.tetrahedron(it);
+			double vol = tet.volume();
+			//std::cout << "Vol:    " << vol               << std::endl;
+			//std::cout << "Minvol: " << minVolume << std::endl;
+			if (vol < minVolume){
+				//std::cout << "Raus damit!" << std::endl;	
+				addCell = false;
+			}
+		}
+
+        if(it->info() == -1) addCell = false;
+
+		if(addCell)
 		{
             ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int)idconversion[it->vertex(0)->info()],
 															(unsigned int)idconversion[it->vertex(1)->info()],
 															(unsigned int)idconversion[it->vertex(2)->info()],
 															(unsigned int)idconversion[it->vertex(3)->info()] });
 		}
+	}
     
 	CGALTriangulation<Kernel> newtri;
 	ret.convert(newtri);
@@ -519,6 +557,12 @@ void normalizeSphereBorder(CGALTriangulation<Kernel> &tri) {
 
 int main(int argc, char *argv[])
 {
+
+	if (argc < 8) {
+		std::cout << "Usage: " << argv[0] << " cellSize reRatio facetSize use_lloyd use_perturb use_exude regnoise silent minvol filter_border_only (ma_min_thr ma_max_thr invert)" << std::endl;
+		return EXIT_FAILURE;
+	}
+
     CGALTriangulation<Kernel> tri;
     typedef CGALTriangulation<Kernel>::Point Point;
     
@@ -544,6 +588,30 @@ int main(int argc, char *argv[])
 	double regnoise = std::stod(argv[7]);
 	if (atoi(argv[8])) silent = false;
 
+	double minVolume     = 0.;
+	bool   boundary_only = true;
+	if (argc >= 10) {
+		minVolume = std::stod(argv[9]);
+	}
+	if (argc >= 11) {
+		if (!atoi(argv[10])){
+			boundary_only = false;	
+			std::cout << "...aply minvol filter to all cells" << std::endl;
+		}
+	}
+
+	// minangle colormap mapping options
+	double minangle_min_threshold = 0.;
+	double minangle_max_threshold = 70.5;
+	bool invert_minangle_cmap = true;
+
+	if (argc == 14) {
+		minangle_min_threshold = std::stod(argv[11]);	
+		minangle_max_threshold = std::stod(argv[12]);	
+		if (!atoi(argv[13])) invert_minangle_cmap = false;
+	}
+
+
 	bool addOrbitpointsMEL = true;
 
 	//int min_orbitpoints  	= std::atoi(argv[7]);
@@ -560,7 +628,8 @@ int main(int argc, char *argv[])
 	if (torus) {
 		FILENAME_base = "Torus_";
 	}
-	for (int i=0; i < argc-2; ++i) FILENAME_base += argv[i+1] + std::string("_");
+
+	for (int i=0; i < 7; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
 	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions,torus);
 
@@ -613,7 +682,7 @@ int main(int argc, char *argv[])
 
 		double origin_ind_pre = origin_ind;
 		std::vector<int> orbit_indices_pre = orbit_indices;
-		replaceMeshByRegular(tri, variance, orbit_indices, origin_ind);
+		replaceMeshByRegular(tri, variance, orbit_indices, origin_ind, minVolume, boundary_only);
 
 		std::cout << "Origin index pre : " << origin_ind_pre << std::endl;
 		std::cout << "Origin index post: " << origin_ind     << std::endl;
@@ -843,10 +912,22 @@ int main(int argc, char *argv[])
 	if (!silent) {
 
 		bool normalize=false;
-		double amips_max = 100;
+		double amips_max = 50;
+
+
 		if (!normalize) {
-			//normalize minangle by 70.5 deg
-			for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = cell_metrics[minangle][i] / 70.5;
+			for (int i=0; i < cell_metrics[minangle].size(); i++){
+
+				double value = cell_metrics[minangle][i];
+				// clip
+				value = (value > minangle_min_threshold)? value : minangle_min_threshold;
+				value = (value < minangle_max_threshold)? value : minangle_max_threshold;
+				// normalize
+				value = (value-minangle_min_threshold) / (minangle_max_threshold- minangle_min_threshold)  ;
+				// (invert?) and save	
+				cell_metrics[minangle][i] = (invert_minangle_cmap)? 1 - value : value;
+			}
+
 			// normalize amips using the heuristically chosen max val amips_max and the min value 3
 			for (int i=0; i < cell_metrics[amips].size(); i++) cell_metrics[amips][i] = (cell_metrics[amips][i] - 3) / amips_max;
 		} 
@@ -861,7 +942,6 @@ int main(int argc, char *argv[])
 		Eigen::MatrixXd cellcolors_amips; 
 		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
 		cellcolors[amips] = cellcolors_amips;
-
 
 
 		Point origin = Point(0., 0., 0.);
@@ -1024,12 +1104,18 @@ int main(int argc, char *argv[])
 		*/
 
 
-
+		/*
 		viewer.core().trackball_angle.x() = 0.121685;
 		viewer.core().trackball_angle.y() = 0.335208;
 		viewer.core().trackball_angle.z() = 0.0437081;
 		viewer.core().trackball_angle.w() = 0.93323;
+		*/
 
+		viewer.core().trackball_angle.x() = 0.0727511;
+		viewer.core().trackball_angle.y() = 0.861667;
+		viewer.core().trackball_angle.z() = 0.129162;
+		viewer.core().trackball_angle.w() = 0.485339;
+ 
 		//screenshot(viewer, "dadada");
 
 		viewer.launch();
