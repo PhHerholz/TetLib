@@ -37,6 +37,14 @@ typedef Kernel::Point_3 Point;
 
 #include <Eigen/Dense>
 
+// SET GLOBAL TO HANDLE IN CALLBACKS
+enum Metric {minangle=0, amips, volume};
+std::string FILENAME_base = "";
+std::string FILENAME="";
+Eigen::MatrixXd facecolors;
+std::map<Metric, Eigen::MatrixXd> cellcolors;
+std::vector<int>  faceids; 
+Metric metric_shown;
 
 void screenshot(igl::opengl::glfw::Viewer& viewer, std::string filename) {
 
@@ -51,37 +59,47 @@ void screenshot(igl::opengl::glfw::Viewer& viewer, std::string filename) {
       viewer.data(),false,R,G,B,A);
 
     // Save it to a PNG
-    igl::png::writePNG(R,G,B,A, "out/" + filename +  "out.png");
+    igl::png::writePNG(R,G,B,A, filename +  "out.png");
 
 }
 
 bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier)
 {
-  if (key == '2')
-  {
-	/*
-	  std::cout << FILENAME_base << std::endl;
-	  screenshot(viewer, FILENAME);
-	  if (metric_shown == minangle) {
+
+	if (key == '0') {
+		std::cout << "Trackball coords: ";
+		std::cout << viewer.core().trackball_angle.x() << " "; 
+		std::cout << viewer.core().trackball_angle.y() << " "; 
+		std::cout << viewer.core().trackball_angle.z() << " "; 
+		std::cout << viewer.core().trackball_angle.w() << std::endl; 
+
+		std::cout << viewer.core().trackball_angle.coeffs() << std::endl;
+	}
+
+
+	if (key == '2')
+	{
+		std::cout << FILENAME_base << std::endl;
+		screenshot(viewer, FILENAME);
+
+		/*
+		if (metric_shown == minangle) {
 		  metric_shown = amips;
 		  FILENAME = FILENAME_base + "amips";
-	  } else if (metric_shown == amips) {
+		} else if (metric_shown == amips) {
 		  metric_shown = volume;
 		  FILENAME = FILENAME_base + "volume";
-	  } else {
+		} else {
 		  metric_shown = minangle;
 		  FILENAME = FILENAME_base + "minangle";
-	  }
+		}
 
-	  facecolors.resize(faceids.size(), 3);
-	  for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
-	  viewer.data().set_colors(facecolors);
+		facecolors.resize(faceids.size(), 3);
+		for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
+		viewer.data().set_colors(facecolors);
+		*/
 
-	  if(metric_shown == minangle) {
-		viewer.launch_shut(); 
-	  } 
-	  */
-  }
+	}
   
 }
 
@@ -379,15 +397,38 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> &orbi
 int main(int argc, char *argv[])
 {
 
+	// ################
+	// # ARG HANDLING # 
+	// ################
 	if (argc < 2) {
-		std::cout << "usage: argv[0] file" << std::endl;  //run_folder variance r_postfix (1 for gui output)" << std::endl;
+		std::cout << "usage: argv[0] file (minangle_max_thr minangle_min_thr minangle_invert_cmap)" << std::endl;  //run_folder variance r_postfix (1 for gui output)" << std::endl;
 		return 0;
 	}
 
+	std::string filepath = argv[1];
+	FILENAME_base = filepath;
+
+	// minangle colormap mapping options
+	double minangle_min_threshold = 0.;
+	double minangle_max_threshold = 70.5;
+	bool invert_minangle_cmap = true;
+	double mindecentry_maxabs = 5;
+
+	if (argc == 5) {
+		minangle_min_threshold = std::stod(argv[2]);	
+		minangle_max_threshold = std::stod(argv[3]);	
+		if (!atoi(argv[4])) invert_minangle_cmap = false;
+	}
+
+	if (argc >= 6) {
+		mindecentry_maxabs = std::stod(argv[5]);	
+	}
+
+	// #############
+	// # LOAD MESH #
+	// #############
 	CGALTriangulation<Kernel> tri;
 	std::vector<int> orbitinds;
-
-	std::string filepath = argv[1];
 
 	if(loadMeshWithOrbitpoints(tri, orbitinds, filepath)) {
 		std::cout << "...loaded mesh with " << orbitinds.size() << " orbitinds" << std::endl;
@@ -400,7 +441,7 @@ int main(int argc, char *argv[])
 	std::cout << "METRICS"  << std::endl;
 	// #########################################
 
-	enum Metric {minangle=0, amips, volume};
+	enum Metric {minangle=0, amips, volume, minentrydecl};
 	Eigen::MatrixXd facecolors, x;
 	std::map<Metric, Eigen::MatrixXd> cellcolors;
 	std::vector<int>  faceids; 
@@ -413,24 +454,85 @@ int main(int argc, char *argv[])
 	metric_names[minangle] = "minangle";
 	metric_names[amips] = "amips";
 	metric_names[volume] = "volume";
+	metric_names[minentrydecl] = "minentrydecl";
+	FILENAME = FILENAME_base + metric_names[metric_shown];
 
-	Eigen::VectorXd Vol, Minang, Amips; 
+	Eigen::VectorXd Vol, Minang, Amips, Minentrydecl; 
+
+	tri.calcMinDECEdgeContributionAllCells(Minentrydecl);
 	tri.calcVolumeAllCells(Vol);
 	tri.calcMinAngleAllCells(Minang);
 	tri.calcAMIPSAllCells(Amips);
+
 	cell_metrics[volume]=Vol;
 	cell_metrics[minangle]=Minang;
 	cell_metrics[amips]=Amips;
+	cell_metrics[minentrydecl]=Minentrydecl;
 
 	std::cout << "clcd" << std::endl;
+	std::cout << "Minenrydecls: " << std::endl;
+	double minval = std::numeric_limits<double>::max();
+	for (int i = 0; i < cell_metrics[minentrydecl].size(); i++) {
+		std::cout << cell_metrics[minentrydecl][i] << std::endl;	
+		if (cell_metrics[minentrydecl][i] < minval) minval = cell_metrics[minentrydecl][i];
+	}
+	std::cout << "MINVAL: " << minval << std::endl;
+
+	
+	/*
+	// verify that vertices and tets are in correct order
+	std::cout << "Vertices: ";
+    for(auto it = tri.mesh.vertices_begin(); it != tri.mesh.vertices_end(); ++it){
+        if(it->info() != -1) {
+			std::cout << it->info() << " ";	
+		}
+	}
+	std::cout << std::endl;
+	std::cout << "Tets: ";
+    for(auto it = tri.mesh.cells_begin(); it != tri.mesh.cells_end(); ++it) {
+        if(it->info() != -1) {
+			std::cout << it->info() << " ";	
+		}
+	}
+	std::cout << std::endl;
+	*/
+	
+	std::cout << "Write Metrics to File " << std::endl;
+
+	std::ofstream feil;
+	feil.open(FILENAME_base + "metrics.csv");
+	feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << "," << metric_names[minentrydecl] << std::endl;
+	for(int i; i < cell_metrics[volume].size(); i++) {
+		feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) << "," << cell_metrics[minentrydecl](i) << std::endl;
+	}
+	feil.close();
+
+	tri.write(FILENAME_base + "meshfile.tet");
+
 
 	bool normalize=false;
 	double amips_max = 100;
 	if (!normalize) {
-		//normalize minangle by 70.5 deg
-		for (int i=0; i < cell_metrics[minangle].size(); i++) cell_metrics[minangle][i] = cell_metrics[minangle][i] / 70.5;
+		for (int i=0; i < cell_metrics[minangle].size(); i++){
+
+			double value = cell_metrics[minangle][i];
+			// clip
+			value = (value > minangle_min_threshold)? value : minangle_min_threshold;
+			value = (value < minangle_max_threshold)? value : minangle_max_threshold;
+			// normalize
+			value = (value-minangle_min_threshold) / (minangle_max_threshold- minangle_min_threshold)  ;
+			// (invert?) and save	
+			cell_metrics[minangle][i] = (invert_minangle_cmap)? 1 - value : value;
+		}
+
 		// normalize amips using the heuristically chosen max val amips_max and the min value 3
 		for (int i=0; i < cell_metrics[amips].size(); i++) cell_metrics[amips][i] = (cell_metrics[amips][i] - 3) / amips_max;
+
+		// normalize the min dec entry to show only negative entries
+		for (int i=0; i < cell_metrics[minentrydecl].size(); i++){
+			double value = cell_metrics[minentrydecl][i];
+			cell_metrics[minentrydecl][i] = (value < 0)? -value / mindecentry_maxabs : 0;
+		}
 	} 
 
 	Eigen::MatrixXd cellcolors_volume; 
@@ -442,6 +544,9 @@ int main(int argc, char *argv[])
 	Eigen::MatrixXd cellcolors_amips; 
 	igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
 	cellcolors[amips] = cellcolors_amips;
+	Eigen::MatrixXd cellcolors_minentrydecl; 
+	igl::colormap(igl::COLOR_MAP_TYPE_PLASMA, cell_metrics[minentrydecl], normalize, cellcolors_minentrydecl);
+	cellcolors[minentrydecl] = cellcolors_minentrydecl;
 
 	/* ################## SHOW  MESH ####################*/
 
@@ -499,24 +604,14 @@ int main(int argc, char *argv[])
 		if (ImGui::CollapsingHeader("Presentation", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			Metric oldmetric = metric_shown;
-			ImGui::Combo("Metric", (int *)(&metric_shown), "MinAngle\0AMIPS\0Volume\0\0");
-
-			/*
-			if(ImGui::Checkbox("Show Metric Values", &showValues)) {
-				for(int i = 0; i < F.rows(); ++i) {
-					const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
-					viewer.data().add_label(FaceCenter,std::to_string(cell_metrics[metric][faceids[i]]));
-				}
-			} 
-			*/
-			//else {
-			//	viewer.data().clear_labels();	
-			//}
+			ImGui::Combo("Metric", (int *)(&metric_shown), "MinAngle\0AMIPS\0Volume\0MINDECL\0");
 
 			if (oldmetric != metric_shown){
 				facecolors.resize(faceids.size(), 3);
 				for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 				viewer.data().set_colors(facecolors);
+
+				FILENAME = FILENAME_base + metric_names[metric_shown];
 			}
 
 		}
@@ -595,6 +690,11 @@ int main(int argc, char *argv[])
 
 	viewer.core().background_color.setOnes();
 	viewer.callback_key_down = &key_down;
+
+	viewer.core().trackball_angle.x() = 0.0774649 ;
+	viewer.core().trackball_angle.y() = 0.493061  ;
+	viewer.core().trackball_angle.z() = 0.0441348 ;
+	viewer.core().trackball_angle.w() = 0.865415  ;
 
 	viewer.launch();
 }
