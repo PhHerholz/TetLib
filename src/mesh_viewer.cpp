@@ -50,6 +50,45 @@ void writeCellGradsToFile(std::vector<std::tuple<int, Point, Point>> boundaryCel
 	feil.close();
 }
 
+void writeVertGToFile(std::vector<std::tuple<int, Point, Point>> boundaryCellNormals, std::string filepath) {
+	std::ofstream feil;
+	int cid;
+	Point barycenter, surfaceGrad;
+
+	feil.open(filepath);
+	feil << "cellind" << "," << "pointx" << "," << "pointy" << "," << "pointz" << "," << "valx" << "," << "valy" << "," << "valz" << std::endl;
+	for (auto a: boundaryCellNormals) {
+		std::tie(cid, barycenter, surfaceGrad) = a;
+		feil << cid << "," << barycenter.x() << "," << barycenter.y() << "," << barycenter.z() << "," << surfaceGrad.x() << "," << surfaceGrad.y() << "," << surfaceGrad.z() << std::endl;
+	}
+	feil.close();
+}
+
+
+void drawMeshLaplaceVectors(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd W, igl::opengl::glfw::Viewer& viewer, std::vector<std::tuple<int, Point, Point>> *boundaryCellNormals=nullptr) {
+
+	typedef CGALTriangulation<Kernel>::Vertex_handle Vertex_handle;
+	std::vector<Vertex_handle> adj;
+    tri.mesh.finite_adjacent_vertices(tri.mesh.infinite_vertex(), back_inserter(adj));
+	Eigen::RowVector3d clr = Eigen::RowVector3d(1, 0, 0);
+	for (auto vh: adj) {
+		// iterate over surface vertices
+
+		Eigen::MatrixXd B(1, 3);
+		Eigen::MatrixXd G(1, 3);
+		B << vh->point().x(), vh->point().y(), vh->point().z();
+		G << vh->point().x() + W.coeff(vh->info(), 0), vh->point().y() + W.coeff(vh->info(), 1), vh->point().z() + W.coeff(vh->info(), 2);
+
+		if (boundaryCellNormals){
+			Point tmp(W.coeff(vh->info(), 0), W.coeff(vh->info(), 1), W.coeff(vh->info(), 2));
+			boundaryCellNormals->push_back(std::make_tuple(vh->info(), vh->point(), tmp));
+		}
+
+		viewer.data().add_edges(B, G, clr);
+	}
+
+}
+
 
 void drawSurfaceGradients(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Viewer& viewer, Eigen::SparseMatrix<double> G, Eigen::MatrixXd h, std::vector<std::tuple<int, Point, Point>> *boundaryCellNormals=nullptr) {
 
@@ -108,6 +147,35 @@ void drawSurfaceGradients(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Vie
 
 }
 
+
+void vertValues(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd Verts, Eigen::MatrixXd& W, double scalingcoeff, int mode) {
+
+	Eigen::SparseMatrix<double> L, M;
+	if (mode == 0) {
+		// DEC mixed
+		tri.DECLaplacianMixed(L, &M);
+		L = -L;
+
+	} else if (mode == 1) {
+		// DEC 	
+		tri.DECLaplacian(L, &M);
+		L = -L;
+
+	} else {
+		//default: FEM
+		tri.massMatrix(M);
+		tri.FEMLaplacian(L);
+	}
+
+	W = (L * Verts);
+	for (int i = 0; i < W.rows(); ++i){
+		for (int j=0; j<3; ++j){
+			W(i,j) /= M.coeff(i,i);
+			W(i,j) *= scalingcoeff;
+		}
+	
+	} 
+}
 
 void heatValues(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h, int mode)
 {
@@ -171,8 +239,9 @@ void heatValues(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h, int mode)
 
 
 // SET GLOBAL TO HANDLE IN CALLBACKS
-enum SurfGrad {fem=0, dec, decmixed, nosurfgrad};
-enum Metric {minangle=0, amips, volume};
+enum SurfGrad {fem=0, dec, decmixed};
+enum SurfInfo {heatgrad=0, vertval, nosurf};
+enum Metric {minangle=0, amips, volume, minentrydecl};
 std::string FILENAME_base = "";
 std::string FILENAME="";
 Eigen::MatrixXd facecolors;
@@ -531,14 +600,23 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> &orbi
 	orbitinds = new_orbitinds;
 }
 
-void updateSurfaceGrads(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Viewer& viewer, std::map<SurfGrad, Eigen::MatrixXd> heat_values, SurfGrad surfgrad_shown, Eigen::SparseMatrix<double> G) {
-	if (surfgrad_shown != nosurfgrad) {
-		viewer.data().lines.resize(0, 9);
-		drawSurfaceGradients(tri, viewer, G, heat_values[surfgrad_shown]);
+//void updateSurfaceGrads(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Viewer& viewer, std::map<SurfGrad, Eigen::MatrixXd> heat_values, std::map<SurfGrad, Eigen::MatrixXd> Ws,  SurfGrad surfgrad_shown, Eigen::SparseMatrix<double> G) {
+void updateSurfaceGrads(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Viewer& viewer, std::map<SurfGrad, Eigen::MatrixXd> heat_values, std::map<SurfGrad, Eigen::MatrixXd> vert_values, SurfInfo surfinfo_shown, SurfGrad surfgrad_shown, Eigen::SparseMatrix<double> G) {
+
+	if (surfinfo_shown != nosurf) {
+		if (surfinfo_shown == heatgrad) {
+			viewer.data().lines.resize(0, 9);
+			drawSurfaceGradients(tri, viewer, G, heat_values[surfgrad_shown]);
+		} else if (surfinfo_shown == vertval){
+			viewer.data().lines.resize(0, 9);
+			drawMeshLaplaceVectors(tri, vert_values[surfgrad_shown], viewer);
+		}
+	
 	} else {
 		viewer.data().lines.resize(0, 9);
 	}
 }
+
 
 
 int main(int argc, char *argv[])
@@ -610,10 +688,36 @@ int main(int argc, char *argv[])
 	SurfGrad surfgrad_shown = fem;
 
 	// #########################################
+	std::cout << "Vertex Laplace"  << std::endl;
+	// #########################################
+
+	int nv = tri.mesh.number_of_vertices();
+	Eigen::MatrixXd Verts(nv, 3);
+	for (auto vh: tri.mesh.finite_vertex_handles()){
+		Verts(vh->info(), 0) = vh->point().x();
+		Verts(vh->info(), 1) = vh->point().y();
+		Verts(vh->info(), 2) = vh->point().z();
+	}
+
+	Eigen::MatrixXd W_fem, W_dec, W_decmixed;
+
+	double scalingcoeff = 0.5 * 1e-2;
+
+	vertValues(tri, Verts, W_decmixed, scalingcoeff, 0);
+	vertValues(tri, Verts, W_dec, scalingcoeff,      1);
+	vertValues(tri, Verts, W_fem, scalingcoeff,      2);
+
+	std::map<SurfGrad, Eigen::MatrixXd> vert_values;
+	vert_values[fem]	  = W_fem;
+	vert_values[dec]      = W_dec;
+	vert_values[decmixed] = W_decmixed;
+
+	SurfInfo surfinfo_shown = heatgrad;
+
+	// #########################################
 	std::cout << "METRICS"  << std::endl;
 	// #########################################
 
-	enum Metric {minangle=0, amips, volume, minentrydecl};
 	Eigen::MatrixXd facecolors, x;
 	std::map<Metric, Eigen::MatrixXd> cellcolors;
 	std::vector<int>  faceids; 
@@ -790,11 +894,13 @@ int main(int argc, char *argv[])
 			}
 
 
+			SurfInfo oldsurfinfo = surfinfo_shown;
+			ImGui::Combo("Surfce info Info", (int *)(&surfinfo_shown), "HEATGRAD\0VERTINFO\0None\0\0");
 			SurfGrad oldsurfgrad = surfgrad_shown;
-			ImGui::Combo("Surfgrad", (int *)(&surfgrad_shown), "FEM\0DEC\0DECMIXED\0None\0");
+			ImGui::Combo("Surfgrad", (int *)(&surfgrad_shown), "FEM\0DEC\0DECMIXED\0");
 
-			if (oldsurfgrad != surfgrad_shown){
-				updateSurfaceGrads(tri, viewer, heat_values, surfgrad_shown, G);
+			if ((oldsurfgrad != surfgrad_shown) || (oldsurfinfo != surfinfo_shown)) {
+				updateSurfaceGrads(tri, viewer, heat_values, vert_values, surfinfo_shown, surfgrad_shown, G);
 			}
 
 		}
@@ -827,11 +933,11 @@ int main(int argc, char *argv[])
 					viewer.data().clear();
 					viewer.data().set_mesh(V, F);
 
-					if (!showHeat || surfgrad_shown == nosurfgrad) {
+					if (!showHeat || surfinfo_shown == nosurf) {
 						facecolors.resize(faceids.size(), 3);
 						for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 						viewer.data().set_colors(facecolors);
-						updateSurfaceGrads(tri, viewer, heat_values, surfgrad_shown, G);
+						updateSurfaceGrads(tri, viewer, heat_values, vert_values, surfinfo_shown, surfgrad_shown, G);
 
 					} else {
 
@@ -900,8 +1006,28 @@ int main(int argc, char *argv[])
 		writeCellGradsToFile(boundaryCellNormals, FILENAME_base + "_boundarygradients_decmixed.csv");
 	}
 
+	bool writeoutsurfacelaplace = false;
+	if (writeoutsurfacelaplace) {
+		std::vector<std::tuple<int, Point, Point>> boundaryCellNormals;
+		// FEM
+		boundaryCellNormals.clear();
+		drawMeshLaplaceVectors(tri, vert_values[fem], viewer, &boundaryCellNormals);
+		writeVertGToFile(boundaryCellNormals, FILENAME_base + "_boundaryvals_fem.csv");
+
+		// DEC
+		boundaryCellNormals.clear();
+		drawMeshLaplaceVectors(tri, vert_values[dec], viewer, &boundaryCellNormals);
+		writeVertGToFile(boundaryCellNormals, FILENAME_base + "_boundaryvals_dec.csv");
+
+		// DECMIXED
+		boundaryCellNormals.clear();
+		drawMeshLaplaceVectors(tri, vert_values[decmixed], viewer, &boundaryCellNormals);
+		writeVertGToFile(boundaryCellNormals, FILENAME_base + "_boundaryvals_decmixed.csv");
+	
+	}
+
 	//draw surface normals
-	updateSurfaceGrads(tri, viewer, heat_values, surfgrad_shown, G);
+	updateSurfaceGrads(tri, viewer, heat_values, vert_values, surfinfo_shown, surfgrad_shown, G);
 
 	//std::cout << "LINES: " << viewer.data().lines << std::endl;
 
