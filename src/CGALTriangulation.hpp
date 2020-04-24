@@ -24,6 +24,7 @@ public:
     typedef typename Triangulation::Vertex_handle Vertex_handle;
     typedef typename Triangulation::Cell_handle Cell_handle;
     typedef typename Triangulation::Finite_edges_iterator Finite_edges_iterator;
+    typedef typename Triangulation::Triangle Triangle;
     
     // actual data is represented here
     Triangulation mesh;

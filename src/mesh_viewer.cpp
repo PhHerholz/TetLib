@@ -34,10 +34,111 @@
 typedef CGAL::Simple_cartesian<double> Kernel;
 typedef Kernel::Point_3 Point;
 
-
 #include <Eigen/Dense>
 
+
+void drawSurfaceGradients(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Viewer& viewer, Eigen::SparseMatrix<double> G, Eigen::MatrixXd h) {
+
+	Eigen::MatrixXd femgrads = G * h;
+
+	typedef CGALTriangulation<Kernel>::Triangle Triangle;
+
+    for(auto it: tri.mesh.finite_cell_handles()){ // = reg.cells_begin(); it != reg.cells_end(); ++it)
+
+		std::vector<Triangle> boundary_facets;
+		for (int i = 0; i < 4 ; ++i) {
+			if (tri.mesh.mirror_vertex(it, i)->info() == -1) {
+				//std::cout << "Boundary cell " << std::endl;
+				boundary_facets.push_back(tri.mesh.triangle(it, i));
+			}
+		}
+
+		for (auto f: boundary_facets) {
+			//std::cout << f << std::endl;
+
+			Eigen::MatrixXd B(1, 3) ;
+			B << (f.vertex(0).x() + f.vertex(1).x() + f.vertex(2).x()) / 3, 
+									(f.vertex(0).y() + f.vertex(1).y() + f.vertex(2).y()) / 3, 
+									(f.vertex(0).z() + f.vertex(1).z() + f.vertex(2).z()) / 3;
+
+			int cellind = it->info();
+			Eigen::VectorXf grad(3);
+			grad << femgrads(cellind, 0), femgrads(cellind+1, 0), femgrads(cellind+2, 0); 
+			grad = grad / grad.norm() * 0.1;
+			Eigen::MatrixXd G(1, 3);
+			G << B(0,0) + grad[0], B(0,1) + grad[1], B(0,2) + grad[2];
+
+			viewer.data().add_edges(B, G, Eigen::RowVector3d(1,0,0));
+
+		}
+
+	}
+}
+
+
+void heatValues(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h, int mode)
+{
+	const int cntr = tri.centerVertex();
+	const int n = tri.mesh.number_of_vertices();
+
+	const double t = tri.meanEdgeLengthSquared();
+
+	// Construct A 
+	Eigen::SparseMatrix<double> A, L, M; 
+
+	if (mode == 0) {
+		// DEC mixed
+		tri.DECLaplacianMixed(L, &M);
+		A = M - t * L;
+
+	} else if (mode == 1) {
+		// DEC 	
+		tri.DECLaplacian(L, &M);
+		A = M - t * L; 
+
+	} else {
+		//default: FEM
+		tri.massMatrix(M);
+		tri.FEMLaplacian(L);
+		A = M + t * L;
+	}
+
+	std::cout << "...solve" << std::endl;
+    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol;
+	Eigen::MatrixXd B(n, 1); B.setZero();
+	B(cntr, 0) = 1;
+
+    chol.analyzePattern(A);
+    chol.factorize(A);
+    h = chol.solve(B);
+	std::cout << "......done" << std::endl;
+	/*
+	std::cout << "...solve dec" << std::endl;
+	B.setZero();
+	B(cntr, 0) = 1;
+    choldec.analyzePattern(A_dec);
+    choldec.factorize(A_dec);
+    h_dec = choldec.solve(B);
+	std::cout << "......done" << std::endl;
+
+	std::cout << "...solve dec mixed" << std::endl;
+	B.setZero();
+	B(cntr, 0) = 1;
+    choldecmixed.analyzePattern(A_decmixed);
+    choldecmixed.factorize(A_decmixed);
+    h_decmixed = choldecmixed.solve(B);
+	std::cout << "......done" << std::endl;
+
+	std::cout << "HDEC" << std::endl;
+	std::cout << h_decmixed  << std::endl;
+
+	*/
+
+}
+
+
 // SET GLOBAL TO HANDLE IN CALLBACKS
+enum SurfGrad {fem=0, dec, decmixed, nosurfgrad};
 enum Metric {minangle=0, amips, volume};
 std::string FILENAME_base = "";
 std::string FILENAME="";
@@ -394,6 +495,16 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> &orbi
 	orbitinds = new_orbitinds;
 }
 
+void updateSurfaceGrads(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Viewer& viewer, std::map<SurfGrad, Eigen::MatrixXd> heat_values, SurfGrad surfgrad_shown, Eigen::SparseMatrix<double> G) {
+	if (surfgrad_shown != nosurfgrad) {
+		viewer.data().lines.resize(0, 9);
+		drawSurfaceGradients(tri, viewer, G, heat_values[surfgrad_shown]);
+	} else {
+		viewer.data().lines.resize(0, 9);
+	}
+}
+
+
 int main(int argc, char *argv[])
 {
 
@@ -436,6 +547,27 @@ int main(int argc, char *argv[])
 		std::cout << "Something went wrong loading the mesh" << std::endl;	
 		return 0;
 	}
+
+
+	// #########################################
+	std::cout << "HEAT NORMALS " << std::endl;
+	// #########################################
+	Eigen::MatrixXd h_fem, h_dec, h_decmixed;
+
+	heatValues(tri, h_decmixed, 0);
+	heatValues(tri, h_dec, 1);
+	heatValues(tri, h_fem, 2);
+
+    Eigen::SparseMatrix<double> G;
+	std::cout << "GRAD " << std::endl;
+    tri.gradientOperator(G);
+
+	std::map<SurfGrad, Eigen::MatrixXd> heat_values;
+	heat_values[fem] = h_fem;
+	heat_values[dec] = h_dec;
+	heat_values[decmixed] = h_decmixed;
+
+	SurfGrad surfgrad_shown = fem;
 
 	// #########################################
 	std::cout << "METRICS"  << std::endl;
@@ -554,7 +686,7 @@ int main(int argc, char *argv[])
 	Eigen::MatrixXd V;
 	Eigen::MatrixXi F;
 
-	double offset = 0.1;
+	double offset = -1.0;
 
 	std::array<double, 4> plane{1,0,0,offset};
 	std::vector<std::vector<int>> cmreturn = tri.cutMesh(plane, V, F);
@@ -582,6 +714,11 @@ int main(int argc, char *argv[])
 
 	// Init the viewer
 	igl::opengl::glfw::Viewer viewer;
+
+
+
+
+	// -------------------------------------------------------------
 
 	// Attach a menu plugin
 	igl::opengl::glfw::imgui::ImGuiMenu menu;
@@ -614,13 +751,21 @@ int main(int argc, char *argv[])
 				FILENAME = FILENAME_base + metric_names[metric_shown];
 			}
 
+
+			SurfGrad oldsurfgrad = surfgrad_shown;
+			ImGui::Combo("Surfgrad", (int *)(&surfgrad_shown), "FEM\0DEC\0DECMIXED\0None\0");
+
+			if (oldsurfgrad != surfgrad_shown){
+				updateSurfaceGrads(tri, viewer, heat_values, surfgrad_shown, G);
+			}
+
 		}
 		
 		// Add new group
 		if (ImGui::CollapsingHeader("Cut View", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			double mi = -1.;
-			double ma = 1.;
+			double mi = -2.;
+			double ma = 2.;
 			double oldoffset = offset;
 			ImGui::DragScalar("cut offset", ImGuiDataType_Double, &offset, 0.1, &mi, &ma, "%.4f");
 			
@@ -648,6 +793,8 @@ int main(int argc, char *argv[])
 						facecolors.resize(faceids.size(), 3);
 						for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 						viewer.data().set_colors(facecolors);
+						updateSurfaceGrads(tri, viewer, heat_values, surfgrad_shown, G);
+
 					} else {
 
 						Eigen::VectorXd x2(ids.size());
@@ -695,6 +842,10 @@ int main(int argc, char *argv[])
 	viewer.core().trackball_angle.y() = 0.493061  ;
 	viewer.core().trackball_angle.z() = 0.0441348 ;
 	viewer.core().trackball_angle.w() = 0.865415  ;
+
+	updateSurfaceGrads(tri, viewer, heat_values, surfgrad_shown, G);
+
+	//std::cout << "LINES: " << viewer.data().lines << std::endl;
 
 	viewer.launch();
 }
