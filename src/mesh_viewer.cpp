@@ -36,12 +36,29 @@ typedef Kernel::Point_3 Point;
 
 #include <Eigen/Dense>
 
+void writeCellGradsToFile(std::vector<std::tuple<int, Point, Point>> boundaryCellNormals, std::string filepath) {
+	std::ofstream feil;
+	int cid;
+	Point barycenter, surfaceGrad;
 
-void drawSurfaceGradients(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Viewer& viewer, Eigen::SparseMatrix<double> G, Eigen::MatrixXd h) {
+	feil.open(filepath);
+	feil << "cellind" << "," << "barycenterx" << "," << "barycentery" << "," << "barycenterz" << "," << "cellgradientx" << "," << "cellgradienty" << "," << "cellgradientz" << std::endl;
+	for (auto a: boundaryCellNormals) {
+		std::tie(cid, barycenter, surfaceGrad) = a;
+		feil << cid << "," << barycenter.x() << "," << barycenter.y() << "," << barycenter.z() << "," << surfaceGrad.x() << "," << surfaceGrad.y() << "," << surfaceGrad.z() << std::endl;
+	}
+	feil.close();
+}
+
+
+void drawSurfaceGradients(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Viewer& viewer, Eigen::SparseMatrix<double> G, Eigen::MatrixXd h, std::vector<std::tuple<int, Point, Point>> *boundaryCellNormals=nullptr) {
 
 	Eigen::MatrixXd femgrads = G * h;
 
 	typedef CGALTriangulation<Kernel>::Triangle Triangle;
+
+	;
+	Point origin(0., 0., 0.);
 
     for(auto it: tri.mesh.finite_cell_handles()){ // = reg.cells_begin(); it != reg.cells_end(); ++it)
 
@@ -56,15 +73,14 @@ void drawSurfaceGradients(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Vie
 		for (auto f: boundary_facets) {
 			int cellind = it->info();
 
-			Eigen::MatrixXd B(1, 3) ;
-			B << (f.vertex(0).x() + f.vertex(1).x() + f.vertex(2).x()) / 3, 
-									(f.vertex(0).y() + f.vertex(1).y() + f.vertex(2).y()) / 3, 
-									(f.vertex(0).z() + f.vertex(1).z() + f.vertex(2).z()) / 3;
+			Point facecenter(	(f.vertex(0).x() + f.vertex(1).x() + f.vertex(2).x()) / 3, 
+								(f.vertex(0).y() + f.vertex(1).y() + f.vertex(2).y()) / 3, 
+								(f.vertex(0).z() + f.vertex(1).z() + f.vertex(2).z()) / 3 );
+
+			Kernel::Vector_3 cellgradient(femgrads(3*cellind, 0), femgrads(3*cellind+1, 0), femgrads(3*cellind+2, 0)); 
 
 			Kernel::Vector_3 surfnormal = CGAL::cross_product(f.vertex(1) - f.vertex(0), f.vertex(2) - f.vertex(0));	
 			surfnormal = - surfnormal / std::sqrt(surfnormal.squared_length());
-
-			Kernel::Vector_3 cellgradient(femgrads(3*cellind, 0), femgrads(3*cellind+1, 0), femgrads(3*cellind+2, 0)); 
 
 			Eigen::RowVector3d clr;
 			if (cellgradient * surfnormal > 0) {
@@ -73,17 +89,23 @@ void drawSurfaceGradients(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Vie
 				clr = Eigen::RowVector3d(0, 0, 1);	
 			}
 
-			Eigen::VectorXf grad(3);
-			grad << cellgradient.x(), cellgradient.y(), cellgradient.z();
-			grad = grad / grad.norm() * 0.1;
+			Kernel::Vector_3 cellgradient_normed = cellgradient / std::sqrt(cellgradient.squared_length());
+
+			if (boundaryCellNormals) boundaryCellNormals->push_back(std::make_tuple(cellind, facecenter, origin + cellgradient));
+
+			Point cellgrad_finish = facecenter + cellgradient_normed * 0.1;
+
+			Eigen::MatrixXd B(1, 3) ;
 			Eigen::MatrixXd G(1, 3);
-			G << B(0,0) + grad[0], B(0,1) + grad[1], B(0,2) + grad[2];
+			B << facecenter.x(), facecenter.y(), facecenter.z();
+			G << cellgrad_finish.x(), cellgrad_finish.y(), cellgrad_finish.z();
 
 			viewer.data().add_edges(B, G, clr);
 
 		}
 
 	}
+
 }
 
 
@@ -157,6 +179,9 @@ Eigen::MatrixXd facecolors;
 std::map<Metric, Eigen::MatrixXd> cellcolors;
 std::vector<int>  faceids; 
 Metric metric_shown;
+
+
+
 
 void screenshot(igl::opengl::glfw::Viewer& viewer, std::string filename) {
 
@@ -856,6 +881,26 @@ int main(int argc, char *argv[])
 	viewer.core().trackball_angle.z() = 0.0441348 ;
 	viewer.core().trackball_angle.w() = 0.865415  ;
 
+
+	bool writeoutsurfacegradients=false;
+	if (writeoutsurfacegradients) {
+		// write out surface values
+		std::vector<std::tuple<int, Point, Point>> boundaryCellNormals;
+		// FEM
+		boundaryCellNormals.clear();
+		drawSurfaceGradients(tri, viewer, G, heat_values[fem], &boundaryCellNormals);
+		writeCellGradsToFile(boundaryCellNormals, FILENAME_base + "_boundarygradients_fem.csv");
+		// DEC
+		boundaryCellNormals.clear();
+		drawSurfaceGradients(tri, viewer, G, heat_values[dec], &boundaryCellNormals);
+		writeCellGradsToFile(boundaryCellNormals, FILENAME_base + "_boundarygradients_dec.csv");
+		// DECMIXED
+		boundaryCellNormals.clear();
+		drawSurfaceGradients(tri, viewer, G, heat_values[decmixed], &boundaryCellNormals);
+		writeCellGradsToFile(boundaryCellNormals, FILENAME_base + "_boundarygradients_decmixed.csv");
+	}
+
+	//draw surface normals
 	updateSurfaceGrads(tri, viewer, heat_values, surfgrad_shown, G);
 
 	//std::cout << "LINES: " << viewer.data().lines << std::endl;
