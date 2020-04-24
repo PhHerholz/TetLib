@@ -54,21 +54,32 @@ void drawSurfaceGradients(CGALTriangulation<Kernel>& tri, igl::opengl::glfw::Vie
 		}
 
 		for (auto f: boundary_facets) {
-			//std::cout << f << std::endl;
+			int cellind = it->info();
 
 			Eigen::MatrixXd B(1, 3) ;
 			B << (f.vertex(0).x() + f.vertex(1).x() + f.vertex(2).x()) / 3, 
 									(f.vertex(0).y() + f.vertex(1).y() + f.vertex(2).y()) / 3, 
 									(f.vertex(0).z() + f.vertex(1).z() + f.vertex(2).z()) / 3;
 
-			int cellind = it->info();
+			Kernel::Vector_3 surfnormal = CGAL::cross_product(f.vertex(1) - f.vertex(0), f.vertex(2) - f.vertex(0));	
+			surfnormal = - surfnormal / std::sqrt(surfnormal.squared_length());
+
+			Kernel::Vector_3 cellgradient(femgrads(3*cellind, 0), femgrads(3*cellind+1, 0), femgrads(3*cellind+2, 0)); 
+
+			Eigen::RowVector3d clr;
+			if (cellgradient * surfnormal > 0) {
+				clr = Eigen::RowVector3d(1, 0, 0);
+			} else {
+				clr = Eigen::RowVector3d(0, 0, 1);	
+			}
+
 			Eigen::VectorXf grad(3);
-			grad << femgrads(cellind, 0), femgrads(cellind+1, 0), femgrads(cellind+2, 0); 
+			grad << cellgradient.x(), cellgradient.y(), cellgradient.z();
 			grad = grad / grad.norm() * 0.1;
 			Eigen::MatrixXd G(1, 3);
 			G << B(0,0) + grad[0], B(0,1) + grad[1], B(0,2) + grad[2];
 
-			viewer.data().add_edges(B, G, Eigen::RowVector3d(1,0,0));
+			viewer.data().add_edges(B, G, clr);
 
 		}
 
@@ -524,15 +535,19 @@ int main(int argc, char *argv[])
 	double minangle_max_threshold = 70.5;
 	bool invert_minangle_cmap = true;
 	double mindecentry_maxabs = 5;
+	bool showHeat   = false;
 
-	if (argc == 5) {
-		minangle_min_threshold = std::stod(argv[2]);	
-		minangle_max_threshold = std::stod(argv[3]);	
-		if (!atoi(argv[4])) invert_minangle_cmap = false;
+	if (argc >=3)
+		if (atoi(argv[2])) showHeat = true;
+
+	if (argc == 6) {
+		minangle_min_threshold = std::stod(argv[3]);	
+		minangle_max_threshold = std::stod(argv[4]);	
+		if (!atoi(argv[5])) invert_minangle_cmap = false;
 	}
 
-	if (argc >= 6) {
-		mindecentry_maxabs = std::stod(argv[5]);	
+	if (argc >= 7) {
+		mindecentry_maxabs = std::stod(argv[6]);	
 	}
 
 	// #############
@@ -730,8 +745,6 @@ int main(int argc, char *argv[])
 	int dir = 0;
 
 	Metric metric = minangle;
-	static bool showValues = false;
-	static bool showHeat   = false;
 
 	// Add content to the default menu window
 	menu.callback_draw_viewer_menu = [&]()
@@ -789,7 +802,7 @@ int main(int argc, char *argv[])
 					viewer.data().clear();
 					viewer.data().set_mesh(V, F);
 
-					if (!showHeat) {
+					if (!showHeat || surfgrad_shown == nosurfgrad) {
 						facecolors.resize(faceids.size(), 3);
 						for (int i; i < faceids.size(); i++) facecolors.row(i) = cellcolors[metric_shown].row(faceids[i]);
 						viewer.data().set_colors(facecolors);
@@ -799,7 +812,7 @@ int main(int argc, char *argv[])
 
 						Eigen::VectorXd x2(ids.size());
 						for(int i = 0; i < ids.size(); ++i)
-							x2(i) = x(ids[i]);
+							x2(i) = heat_values[surfgrad_shown](ids[i]);
 
 
 						Eigen::MatrixXd color;
