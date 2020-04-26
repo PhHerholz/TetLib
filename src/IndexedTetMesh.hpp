@@ -75,6 +75,19 @@ public:
     template<class Kernel>
     void
     convert(CGALTriangulation<Kernel>& tri);
+
+	// DUAL LAPLACE IGL/EIGEN ONLY
+
+	void 
+	circumcenter(const Eigen::Vector3d& a, const Eigen::Vector3d& b, const Eigen::Vector3d& c, Eigen::Vector3d& cc);
+	void 
+	circumcenter(const Eigen::Matrix<double, 4, 3>& t, Eigen::Vector3d& c);
+	double 
+	volume(const Eigen::Vector3d& a, const Eigen::Vector3d& b, const Eigen::Vector3d& c, const Eigen::Vector3d& d);
+	void 
+	dualLaplace(const Eigen::MatrixXd& V, const Eigen::MatrixXi& T, Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>& M);
+	void 
+	dualLaplace(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>& M);
 };
 
 #include "IndexedTetMesh_impl.h"
