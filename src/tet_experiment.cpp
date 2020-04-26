@@ -40,45 +40,44 @@ typedef Kernel::Point_3 Point;
 
 void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec)
 {
-    const int cntr = tri.centerVertex();
-    const int n = tri.mesh.number_of_vertices();
+const int cntr = tri.centerVertex();
+const int n = tri.mesh.number_of_vertices();
 
-    // Construct A 
-    Eigen::SparseMatrix<double> A_fem, A_dec, L_fem, L_dec, M;
-    //tri.massMatrix(M);
-    tri.FEMLaplacian(L_fem);
+// Construct A 
+Eigen::SparseMatrix<double> A_fem, A_dec, L_fem, L_dec, M;
+//tri.massMatrix(M);
+tri.FEMLaplacian(L_fem);
 
-	std::cout << "Using Mixed DEC" << std::endl;
-    tri.DECLaplacianMixed(L_dec, &M);
-    // tri.DECLaplacian(L_dec, &M);
-    const double t = tri.meanEdgeLengthSquared();
-    A_fem = M + t * L_fem;
-	A_dec = M - t * L_dec; 
+std::cout << "Using Mixed DEC" << std::endl;
+tri.DECLaplacianMixed(L_dec, &M);
+// tri.DECLaplacian(L_dec, &M);
+const double t = tri.meanEdgeLengthSquared();
+A_fem = M + t * L_fem;
+A_dec = M - t * L_dec; 
 
-    // solve the constrained problems
-    std::vector<int> boundary_indices = tri.surfaceVertices(); 
-    boundary_indices.push_back(cntr);
+// solve the constrained problems
+std::vector<int> boundary_indices = tri.surfaceVertices(); 
+boundary_indices.push_back(cntr);
 
-    Eigen::MatrixXd B(n, 1); B.setZero();
-    Eigen::MatrixXd constrValues(boundary_indices.size(), 1);
-    constrValues.setZero();
-    constrValues(boundary_indices.size()-1, 0) = 1;
+Eigen::MatrixXd B(n, 1); B.setZero();
+Eigen::MatrixXd constrValues(boundary_indices.size(), 1);
+constrValues.setZero();
+constrValues(boundary_indices.size()-1, 0) = 1;
 
-	std::cout << "SHAPES " <<std::endl;
-	std::cout << constrValues.size() << std::endl;
-	std::cout << B.rows() << ", " << B.cols()  << std::endl;
-	std::cout << "FEM: " << std::endl;
-	std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
-	std::cout << "DEC: " << std::endl;
-	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
+std::cout << "SHAPES " <<std::endl;
+std::cout << constrValues.size() << std::endl;
+std::cout << B.rows() << ", " << B.cols()  << std::endl;
+std::cout << "FEM: " << std::endl;
+std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
+std::cout << "DEC: " << std::endl;
+std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
 
-    solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
-	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
+solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
+std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
 
-    solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
-	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
+solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
+std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 }
-
 
 
 void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec)
