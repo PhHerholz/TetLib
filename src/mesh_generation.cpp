@@ -221,14 +221,6 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance, std::
 	//typedef CGAL::Triangulation_3<Kernel, TriangulationDS_> Triangulation;
 	typedef CGAL::Regular_triangulation_3<Kernel, TriangulationDS> Regular;
 	typedef Kernel::Weighted_point_3 WPoint;
-	typedef Kernel::Point_3 Point;
-
-	/*
-	typedef typename CGAL::Triangulation_cell_base_with_info_3<int, Kernel> CB_;
-	typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel> VB_;
-	typedef CGAL::Triangulation_data_structure_3<VB_, CB_>  TriangulationDS_;
-	typedef CGAL::Delaunay_triangulation_3<Kernel, TriangulationDS_> Delaunay;
-	*/
 
 	std::random_device rd{};
     std::mt19937 gen{rd()};
@@ -237,19 +229,9 @@ void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, double variance, std::
 	std::vector< std::pair<WPoint,unsigned> > points;
     for (auto vh : tri.mesh.finite_vertex_handles()) {
 		points.push_back( std::make_pair(WPoint(vh->point(),fabs(d(gen) )),vh->info()) );
-		//points.push_back( std::make_pair(WPoint(vh->point(), 0),vh->info()) );
     }
+
 	Regular reg;
-
-	/* DELAUNAY SANITY CHECK
-	std::vector< std::pair<Point,unsigned> > points;
-    for (auto vh : tri.mesh.finite_vertex_handles()) {
-		points.push_back( std::make_pair(vh->point(),vh->info()) );
-		//points.push_back( std::make_pair(WPoint(vh->point(), 0),vh->info()) );
-    }
-	Delaunay reg;
-	*/
-
 	reg.insert(points.begin(), points.end());
 	std::cout << reg.is_valid() << std::endl;
 
@@ -682,7 +664,11 @@ int main(int argc, char *argv[])
 
 		double origin_ind_pre = origin_ind;
 		std::vector<int> orbit_indices_pre = orbit_indices;
-		replaceMeshByRegular(tri, variance, orbit_indices, origin_ind, minVolume, boundary_only);
+
+		// old:
+		//replaceMeshByRegular(tri, variance, orbit_indices, origin_ind, minVolume, boundary_only);
+		// new:
+		tri.replaceMeshByRegular(variance, orbit_indices, origin_ind, minVolume, boundary_only);
 
 		std::cout << "Origin index pre : " << origin_ind_pre << std::endl;
 		std::cout << "Origin index post: " << origin_ind     << std::endl;

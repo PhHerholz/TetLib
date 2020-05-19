@@ -40,43 +40,43 @@ typedef Kernel::Point_3 Point;
 
 void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec)
 {
-const int cntr = tri.centerVertex();
-const int n = tri.mesh.number_of_vertices();
+	const int cntr = tri.centerVertex();
+	const int n = tri.mesh.number_of_vertices();
 
-// Construct A 
-Eigen::SparseMatrix<double> A_fem, A_dec, L_fem, L_dec, M;
-//tri.massMatrix(M);
-tri.FEMLaplacian(L_fem);
+	// Construct A 
+	Eigen::SparseMatrix<double> A_fem, A_dec, L_fem, L_dec, M;
+	//tri.massMatrix(M);
+	tri.FEMLaplacian(L_fem);
 
-std::cout << "Using Mixed DEC" << std::endl;
-tri.DECLaplacianMixed(L_dec, &M);
-// tri.DECLaplacian(L_dec, &M);
-const double t = tri.meanEdgeLengthSquared();
-A_fem = M + t * L_fem;
-A_dec = M - t * L_dec; 
+	std::cout << "Using Mixed DEC" << std::endl;
+	tri.DECLaplacianMixed(L_dec, &M);
+	// tri.DECLaplacian(L_dec, &M);
+	const double t = tri.meanEdgeLengthSquared();
+	A_fem = M + t * L_fem;
+	A_dec = M - t * L_dec; 
 
-// solve the constrained problems
-std::vector<int> boundary_indices = tri.surfaceVertices(); 
-boundary_indices.push_back(cntr);
+	// solve the constrained problems
+	std::vector<int> boundary_indices = tri.surfaceVertices(); 
+	boundary_indices.push_back(cntr);
 
-Eigen::MatrixXd B(n, 1); B.setZero();
-Eigen::MatrixXd constrValues(boundary_indices.size(), 1);
-constrValues.setZero();
-constrValues(boundary_indices.size()-1, 0) = 1;
+	Eigen::MatrixXd B(n, 1); B.setZero();
+	Eigen::MatrixXd constrValues(boundary_indices.size(), 1);
+	constrValues.setZero();
+	constrValues(boundary_indices.size()-1, 0) = 1;
 
-std::cout << "SHAPES " <<std::endl;
-std::cout << constrValues.size() << std::endl;
-std::cout << B.rows() << ", " << B.cols()  << std::endl;
-std::cout << "FEM: " << std::endl;
-std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
-std::cout << "DEC: " << std::endl;
-std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
+	std::cout << "SHAPES " <<std::endl;
+	std::cout << constrValues.size() << std::endl;
+	std::cout << B.rows() << ", " << B.cols()  << std::endl;
+	std::cout << "FEM: " << std::endl;
+	std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
+	std::cout << "DEC: " << std::endl;
+	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
 
-solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
-std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
+	solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
+	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
 
-solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
-std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
+	solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
+	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 }
 
 
@@ -282,188 +282,6 @@ double rand_normal(double mean, double stddev)
     }
 }
 
-
-void replaceMeshByRegular(CGALTriangulation<Kernel> &tri, std::vector<int> &orbitinds, int originind, double variance) {
-		
-	typedef CGAL::Regular_triangulation_vertex_base_3<Kernel> Vb0;
-	typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel, Vb0> VB;
-	//typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel> VB_;
-	typedef CGAL::Regular_triangulation_cell_base_3<Kernel> Cb0;
-	typedef typename CGAL::Triangulation_cell_base_with_info_3<int, Kernel, Cb0> CB;
-	//typedef typename CGAL::Triangulation_cell_base_with_info_3<int, Kernel> CB_;
-	typedef CGAL::Triangulation_data_structure_3<VB, CB>  TriangulationDS;
-	//typedef CGAL::Triangulation_data_structure_3<VB, CB>  TriangulationDS_;
-	//typedef CGAL::Triangulation_3<Kernel, TriangulationDS_> Triangulation;
-	typedef CGAL::Regular_triangulation_3<Kernel, TriangulationDS> Regular;
-	typedef Kernel::Weighted_point_3 WPoint;
-
-	std::vector< std::pair<WPoint,unsigned> > points;
-	std::random_device rd{};
-    std::mt19937 gen{rd()};
-    std::normal_distribution<> d{0, variance};
-	
-    for (auto vh : tri.mesh.finite_vertex_handles()) {
-		points.push_back( std::make_pair(WPoint(vh->point(),fabs(d(gen) )),vh->info()) );
-    }
-
-    
-	Regular reg;
-	reg.insert(points.begin(), points.end());
-	std::cout << reg.is_valid() << std::endl;
-
-    reg.infinite_vertex()->info() = -1;
-    
-	/*
-	std::vector<Point> pts;
-	std::vector<int>   vinds;
-	for (auto vh : tri.mesh.finite_vertex_handles()) {
-		pts.push_back(vh->point());
-		vinds.push_back(vh->info());
-	}
-
-	std::cout << "Vinds.size = " << vinds.size() << std::endl;
-
-	std::random_device rd{};
-    std::mt19937 gen{rd()};
-    std::normal_distribution<> d{0, variance};
-
-	std::cout <<" 1" << std::endl;
-
-	Regular reg;
-	int cnt = 0;
-	reg.infinite_vertex()->info() = -1;
-
-
-	for(int i=0; i<pts.size(); ++i)
-	{
-		std::cout << "I " << i << std::endl;
-		float rndm = fabs(d(gen));
-		std::cout << "rndm:  " << rndm << std::endl;
-		std::cout << "vs: " << vinds.size()<< std::endl;
-		std::cout << "vpts: " << pts.size()<< std::endl;
-		std::cout << "i: " <<  i  << std::endl;
-
-		//std::cout << vinds[i] << std::endl;
-		std::cout << pts[i] ;
-
-		std::cout << "pst" << std::endl;
-		//Point p = pts[i];
-		std::cout << "pr-";
-		WPoint wp = WPoint(pts[i],rndm);
-		std::cout << "r";
-		auto h = reg.insert(wp);
-		std::cout << "-i";
-		h->info() = vinds[i];
-		std::cout << "-w" << std::endl;;
-	}
-	std::cout <<" 2" << std::endl;
-	*/
-
-    int cnt = 0;
-    for(auto it = reg.cells_begin(); it != reg.cells_end(); ++it)
-    {
-        if(reg.is_infinite(it)) it->info() = -1;
-        else it->info() = cnt++;
-    }
-
-
-	//std::cout << "Inserted " << std::endl;
-	//std::cout << " Isvalid: " << reg.is_valid() << std::endl;
-
-	cnt = 0;
-	for(auto it = reg.cells_begin(); it != reg.cells_end(); ++it)
-	{
-		if(reg.is_infinite(it)) it->info() = -1;
-		else it->info() = cnt++;
-	}
-	// tri.mesh = reg;
-	//std::cout << "Converted Mesh to a basic Regular Delaunay" << std::endl;
-
-	/*
-    for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it) {
-		std::cout << it->info() << " ";//  << std::endl;	
-	}
-	std::cout << std::endl;	
-	*/
-
-	//CGAL::draw(reg);
-
-    IndexedTetMesh ret;
-	int nv = reg.number_of_vertices();
-	//std::cout << "NV: " << nv << std::endl;
-
-	ret.vertices.resize(nv);
-
-	std::unordered_map<int, int> idconversion;
-
-	bool contains_origin = false;
-    
-	int inscounter = 0;
-    for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it)
-        if(it->info() != -1){
-			ret.vertices[inscounter][0] = it->point().x();
-			ret.vertices[inscounter][1] = it->point().y();
-			ret.vertices[inscounter][2] = it->point().z();
-			idconversion[it->info()] = inscounter;
-			inscounter++;
-            //ret.vertices.push_back(std::array<double, 3>{it->point().x(), it->point().y(), it->point().z()});
-
-			if (it->info() == originind) {
-				std::cout << "ORIGIN IN !!!!!!!!!!!!!!!!!!!!!!!! " << std::endl;
-				contains_origin=true;
-			}
-		}
-
-	//std::cout << "Reg Vertices: " << ret.vertices.size() << std::endl;
-	//std::cout << "Finite Cells: " << reg.number_of_finite_cells() << std::endl;
-
-    for(auto it: reg.finite_cell_handles()) // = reg.cells_begin(); it != reg.cells_end(); ++it)
-        if(it->info() != -1)
-		{
-			//std::cout << it->info();
-            ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int)idconversion[it->vertex(0)->info()],
-															(unsigned int)idconversion[it->vertex(1)->info()],
-															(unsigned int)idconversion[it->vertex(2)->info()],
-															(unsigned int)idconversion[it->vertex(3)->info()] });
-			//std::cout << "-+" << std::endl;
-		}
-
-	//std::cout << "built map" << std::endl;
-
-	std::vector<int> new_orbitinds;
-	for (int i: orbitinds) {
-		if (idconversion.find(i) != idconversion.end()) {
-			new_orbitinds.push_back(idconversion[i]);	
-
-			std::cout << "wrr" << std::endl;
-			std::cout << (idconversion.find(i) != idconversion.end() ) << std::endl;
-		}
-	}
-
-	if (contains_origin) {
-		int new_originind = idconversion[originind];
-		std::cout << "New originind: " << new_originind << std::endl;
-	} else {
-		std::cout << "ARGH " << idconversion[originind] << std::endl;	
-		std::cout << (idconversion.find(originind) == idconversion.end()) << std::endl;
-		std::cout << (idconversion[-4]) << std::endl;
-	}
-
-	//std::cout << "Converted Regular Delauney to IndexedTetmesh " << std::endl;
-
-    //ret.write("../dbg.tet");
-    
-	CGALTriangulation<Kernel> newtri;
-	ret.convert(newtri);
-
-	// update
-	tri = newtri;
-	orbitinds = new_orbitinds;
-}
-
-
-
-
 int main(int argc, char *argv[])
 {
 
@@ -542,7 +360,7 @@ int main(int argc, char *argv[])
 			std::cout << "Old orbitinds: ";
 			for (int i : orbitinds ) std::cout << i << " ";
 			std::cout << std::endl;
-			replaceMeshByRegular(tri, orbitinds, originind, variance);
+			tri.replaceMeshByRegular(variance, orbitinds, originind);
 			std::cout << "New orbitinds size: " << orbitinds.size() << std::endl;
 			std::cout << "New orbitinds: ";
 			for (int i : orbitinds ) std::cout << i << " ";
@@ -816,3 +634,5 @@ int main(int argc, char *argv[])
 	run_idx++;
 	}
 }
+
+

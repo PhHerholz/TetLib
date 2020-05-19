@@ -1,4 +1,5 @@
 #include <CGAL/Kernel/global_functions.h>
+#include <CGAL/intersections.h>
 #include <Eigen/Sparse>
 #include <fstream>
 #include <unordered_map>
@@ -716,6 +717,124 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
 }
 
 template<class TKernel>
+void
+CGALTriangulation<TKernel>::DECLaplacianRegular(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M)
+{
+    std::vector<Eigen::Triplet<double>> triplets;
+    const int nv = mesh.number_of_vertices();
+    
+    // turn off some costly sanity tests
+    bool dbg = false;
+    
+    std::vector<typename TKernel::Vector_3> vecs(mesh.number_of_vertices());
+    
+    if(M)
+    {
+        M->resize(nv, nv);
+        M->resizeNonZeros(nv);
+        
+        for(int i = 0; i < nv; ++i)
+        {
+            M->outerIndexPtr()[i] = i;
+            M->innerIndexPtr()[i] = i;
+            M->valuePtr()[i] = .0;
+        }
+        
+        M->outerIndexPtr()[nv] = nv;
+    }
+    
+    for(auto h : mesh.finite_cell_handles())
+    {
+        auto tet = mesh.tetrahedron(h);
+        double vol = tet.volume();
+        
+        for(int i = 0; i < 4; ++i)
+            for(int j = 0; j < 4; ++j)
+            if( i != j )
+            {
+                const int k = Triangulation::next_around_edge(i, j);
+                const int l = Triangulation::next_around_edge(j, i);
+
+				//auto cc = CGAL::circumcenter(tet);
+				auto tet_dual  = mesh.dual(h);
+				auto face_dual = mesh.dual(h, tet[l]); // facet (tet[i], tet[j], tet[k]);
+
+
+				// auto ccf = CGAL::circumcenter(tet[i], tet[j], tet[k]);
+				typedef typename TKernel::Plane_3 Plane;
+				typedef typename TKernel::Line_3  Line;
+
+				Line  fd_line   = face_dual.supporting_line();
+				Plane tri_plane = (tet[i], tet[j], tet[k]);
+				auto ccf = intersection(tri_plane, fd_line);
+
+				// auto cce = CGAL::circumcenter(tet[i], tet[j]);
+				auto edge = tet[j] - tet[i];
+				Line edge_line(tet[i], edge);
+				Plane dual_plane(tet_dual, edge_line);
+				auto cce = intersection(dual_plane, edge_line);
+
+				std::cout << "Calced" << std::endl;
+		
+				auto nrml = 0.5 * CGAL::cross_product(ccf - cce, tet_dual - cce);
+				double val = (nrml * edge) / edge.squared_length();
+
+				/*
+				if(std::abs(val - val2) > 1e-10) std::cout << "error: " << val << " " << val2 << std::endl;
+			  
+				vecs[r] += nrml;
+				vecs[s] -= nrml;
+				*/
+                const int r = h->vertex(i)->info();
+                const int s = h->vertex(j)->info();
+            
+                if(M)
+                {
+					// TODO: eddge.squared_length the correct thing here?
+                    M->valuePtr()[r] += val * (edge.squared_length) / 6.;
+                    M->valuePtr()[s] += val * (edge.squared_length) / 6.;
+                }
+    
+                triplets.emplace_back(r, r, -val);
+                triplets.emplace_back(s, s, -val);
+                    
+                triplets.emplace_back(r, s, val);
+                triplets.emplace_back(s, r, val);
+
+            }
+    }
+
+    
+    
+   
+    L.resize(nv, nv);
+    L.setFromTriplets(triplets.begin(), triplets.end());
+
+    
+    if(dbg)
+    {
+        Eigen::MatrixXd V(nv, 3);
+        
+        for(auto h : mesh.finite_vertex_handles())
+        {
+            V(h->info(), 0) = h->point().x();
+            V(h->info(), 1) = h->point().y();
+            V(h->info(), 2) = h->point().z();
+        }
+        
+        Eigen::MatrixXd LV = L * V;
+        
+        for(int i : surfaceVertices())
+        {
+            LV.row(i).setZero();
+        }
+        
+        std::cout << "linear precision " << LV.norm() << std::endl;
+    }
+}
+
+
+template<class TKernel>
 std::vector<char>
 CGALTriangulation<TKernel>::surfaceVertexFlag()
 {
@@ -1074,9 +1193,6 @@ CGALTriangulation<TKernel>::calcAMIPSAllCells(Eigen::VectorXd &E) {
 	}
 }
 
-
-
-// TODO: implement
 // WARNING: this method resets the cell indices.
 template<class TKernel>
 void
@@ -1178,4 +1294,125 @@ CGALTriangulation<TKernel>::performRandomFlips(int num_flips, int try_its,  doub
         h->info() = cnt++;
     }
 
+}
+
+
+template<class TKernel>
+typename CGALTriangulation<TKernel>::Regular
+CGALTriangulation<TKernel>::generateRandomRegular(double variance){
+
+	std::random_device rd{};
+    std::mt19937 gen{rd()};
+    std::normal_distribution<> d{0, variance};
+	
+	std::vector< std::pair<WPoint,unsigned> > points;
+    for (auto vh : mesh.finite_vertex_handles()) {
+		points.push_back( std::make_pair(WPoint(vh->point(),fabs(d(gen) )),vh->info()) );
+    }
+
+	//Regular reg;
+	CGALTriangulation<TKernel>::Regular reg;
+	reg.insert(points.begin(), points.end());
+	std::cout << reg.is_valid() << std::endl;
+
+	//handle infos: (finite vertex infos have been set when inserting them)
+    reg.infinite_vertex()->info() = -1;
+	int cnt = 0;
+	for(auto it = reg.cells_begin(); it != reg.cells_end(); ++it)
+	{
+		if(reg.is_infinite(it)) it->info() = -1;
+		else it->info() = cnt++;
+	}
+
+	return reg;
+}
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
+
+	CGALTriangulation<TKernel>::Regular reg;
+	reg = generateRandomRegular(variance);
+
+	// Translate to IndexedTetmesh
+    IndexedTetMesh ret;
+	int nv = reg.number_of_vertices();
+
+	ret.vertices.resize(nv);
+	std::unordered_map<int, int> idconversion;
+
+	int inscounter = 0;
+    for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it)
+        if(it->info() != -1){
+			ret.vertices[inscounter][0] = it->point().x();
+			ret.vertices[inscounter][1] = it->point().y();
+			ret.vertices[inscounter][2] = it->point().z();
+			idconversion[it->info()] = inscounter;
+			inscounter++;
+		}
+
+    for(auto it: reg.finite_cell_handles()){
+
+		bool addCell = true;
+
+		// check each cell if (!boundary_only):
+		bool checkvolcell = false;
+		if (!boundary_only){
+			std::cout << "Check all Cells" << std::endl;		
+			checkvolcell = true;
+		}
+
+		// if boundary only: check if cell is on boundary
+		if (!checkvolcell) {
+			for (int i = 0; i < 4 ; ++i) {
+				if (reg.mirror_vertex(it, i)->info() == -1) {
+					//std::cout << "Boundary cell " << std::endl;
+					checkvolcell = true;
+				}
+			}
+		}
+
+		if (checkvolcell) {
+			auto tet = reg.tetrahedron(it);
+			double vol = tet.volume();
+			//std::cout << "Vol:    " << vol               << std::endl;
+			//std::cout << "Minvol: " << minVolume << std::endl;
+			if (vol < minVolume){
+				//std::cout << "Raus damit!" << std::endl;	
+				addCell = false;
+			}
+		}
+
+        if(it->info() == -1) addCell = false;
+
+		if(addCell)
+		{
+            ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int)idconversion[it->vertex(0)->info()],
+															(unsigned int)idconversion[it->vertex(1)->info()],
+															(unsigned int)idconversion[it->vertex(2)->info()],
+															(unsigned int)idconversion[it->vertex(3)->info()] });
+		}
+	}
+    
+	// replace triangulation with random reg triangulation
+	ret.convert(*this);
+
+	// convert origin and orbit indices
+	if (originind >= 0) {
+		int new_originind = -1;
+		if (idconversion.find(originind) != idconversion.end()) {
+			new_originind = idconversion[originind];
+		} else {
+			std::cout << "origin lost during noising" << std::endl;	
+		}
+		originind = new_originind;
+	}
+
+	std::vector<int> new_orbitinds;
+	for (int i: orbitinds) {
+		if (idconversion.find(i) != idconversion.end()) {
+			new_orbitinds.push_back(idconversion[i]);	
+		}
+	}
+	orbitinds = new_orbitinds;
 }

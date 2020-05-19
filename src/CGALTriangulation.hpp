@@ -6,6 +6,7 @@
 #include <CGAL/Triangulation_vertex_base_with_info_3.h>
 #include <CGAL/Triangulation_cell_base_with_info_3.h>
 #include <CGAL/Delaunay_triangulation_3.h>
+#include <CGAL/Regular_triangulation_3.h>
 #include <vector>
 #include "IndexedTetMesh.hpp"
 
@@ -25,6 +26,15 @@ public:
     typedef typename Triangulation::Cell_handle Cell_handle;
     typedef typename Triangulation::Finite_edges_iterator Finite_edges_iterator;
     typedef typename Triangulation::Triangle Triangle;
+
+	// typedefs for regular triangulations
+	typedef CGAL::Regular_triangulation_vertex_base_3<Kernel> Vb0;
+	typedef typename CGAL::Triangulation_vertex_base_with_info_3<int, Kernel, Vb0> VBR;
+	typedef CGAL::Regular_triangulation_cell_base_3<Kernel> Cb0;
+	typedef typename CGAL::Triangulation_cell_base_with_info_3<int, Kernel, Cb0> CBR;
+	typedef CGAL::Triangulation_data_structure_3<VBR, CBR>  TriangulationDSR;
+	typedef typename CGAL::Regular_triangulation_3<Kernel, TriangulationDSR> Regular;
+	typedef typename Kernel::Weighted_point_3 WPoint;
     
     // actual data is represented here
     Triangulation mesh;
@@ -52,6 +62,10 @@ public:
     // construct the DEC Laplacian, optionally together with the circumcentric mass matrix
     void
     DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
+
+    // construct the DEC Laplacian for regular Triangulations, optionally together with the circumcentric mass matrix
+    void
+    DECLaplacianRegular(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
 
 	std::vector<char>
 	surfaceVertexFlag();
@@ -102,11 +116,17 @@ public:
 	void
 	calcAMIPSAllCells(Eigen::VectorXd &E);
 
-	
 	// performs random flips in the mesh
 	// WARNING: this method resets the cell indices since the cells are changed
 	void
 	performRandomFlips(int num_flips, int try_its, double edge_prob);
+
+	// generate a regular triangulation from the points of the mesh with random weights drawn from a normal dist with given variance
+	Regular
+	generateRandomRegular(double variance);
+	
+	void
+	replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume=0., bool boundary_only=true);
     
     // find a vertex that is close to the mean of all others
     int
