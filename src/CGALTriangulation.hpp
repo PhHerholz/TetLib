@@ -65,7 +65,7 @@ public:
 
     // construct the DEC Laplacian for regular Triangulations, optionally together with the circumcentric mass matrix
     void
-    DECLaplacianRegular(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
+    DECLaplacianRegular(CGALTriangulation<TKernel>::Regular reg, Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
 
 	std::vector<char>
 	surfaceVertexFlag();

@@ -718,15 +718,15 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::DECLaplacianRegular(Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M)
+CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regular reg, Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M)
 {
     std::vector<Eigen::Triplet<double>> triplets;
-    const int nv = mesh.number_of_vertices();
+    const int nv = reg.mesh.number_of_vertices();
     
     // turn off some costly sanity tests
     bool dbg = false;
     
-    std::vector<typename TKernel::Vector_3> vecs(mesh.number_of_vertices());
+    std::vector<typename TKernel::Vector_3> vecs(reg.mesh.number_of_vertices());
     
     if(M)
     {
@@ -743,9 +743,9 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(Eigen::SparseMatrix<double>& L, 
         M->outerIndexPtr()[nv] = nv;
     }
     
-    for(auto h : mesh.finite_cell_handles())
+    for(auto h : reg.mesh.finite_cell_handles())
     {
-        auto tet = mesh.tetrahedron(h);
+        auto tet = reg.mesh.tetrahedron(h);
         double vol = tet.volume();
         
         for(int i = 0; i < 4; ++i)
@@ -756,8 +756,8 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(Eigen::SparseMatrix<double>& L, 
                 const int l = Triangulation::next_around_edge(j, i);
 
 				//auto cc = CGAL::circumcenter(tet);
-				auto tet_dual  = mesh.dual(h);
-				auto face_dual = mesh.dual(h, tet[l]); // facet (tet[i], tet[j], tet[k]);
+				auto tet_dual  = reg.mesh.dual(h);
+				auto face_dual = reg.mesh.dual(h, tet[l]); // facet (tet[i], tet[j], tet[k]);
 
 
 				// auto ccf = CGAL::circumcenter(tet[i], tet[j], tet[k]);
@@ -809,13 +809,12 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(Eigen::SparseMatrix<double>& L, 
    
     L.resize(nv, nv);
     L.setFromTriplets(triplets.begin(), triplets.end());
-
     
     if(dbg)
     {
         Eigen::MatrixXd V(nv, 3);
         
-        for(auto h : mesh.finite_vertex_handles())
+        for(auto h : reg.mesh.finite_vertex_handles())
         {
             V(h->info(), 0) = h->point().x();
             V(h->info(), 1) = h->point().y();
