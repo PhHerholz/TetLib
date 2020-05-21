@@ -438,47 +438,44 @@ int main(int argc, char *argv[])
 		origin_changedby = orbit_changedby[orbit_indices.size()-1];
 		orbit_indices.pop_back();
 		orbit_changedby.pop_back();
-
-		// Write orbitpoints and amount they were moved to a file
-		std::ofstream feil;
-		feil.open("out/" + FILENAME_base + "orbitpoints.csv");
-		feil << "orbit_idx" << ", " << "moved_by" << std::endl;
-		// add origin
-		feil << origin_ind << ", " << origin_changedby << std::endl;
-		// add orbitpoints
-		for (int i=0; i < orbit_indices.size(); ++i) {
-			feil      << orbit_indices[i] << ", " << orbit_changedby[i] << std::endl; 		
-		}
-		feil.close();
-
 	}
 
 	if (regnoise >= 0) {
-		// #########################################
-		std::cout << "Noise with Reg Triangulation" << std::endl;
-		// #########################################
+		// ###########################################################
+		std::cout << "Noise with Reg Triangulation"      << std::endl;
+		std::cout << "(Noise factor " << regnoise << ")" << std::endl;
+		// ###########################################################
 
 		// set variance st that the std deviation of the reg weights is in the magnitude of mels * rgnoise
 		double mels = tri.meanEdgeLengthSquared();
 		double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
-		//std::cout << "MELS: " << mels << std::endl;
-		//std::cout << "VAR : " << variance << std::endl;
-		//double variance = regnoise;
 
 		double origin_ind_pre = origin_ind;
 		std::vector<int> orbit_indices_pre = orbit_indices;
 
-		// old:
-		//replaceMeshByRegular(tri, variance, orbit_indices, origin_ind, minVolume, boundary_only);
+		int number_of_vertices_old = tri.mesh.number_of_vertices();
+		int number_of_cells_old    = tri.mesh.number_of_cells();
+
 		// new:
 		tri.replaceMeshByRegular(variance, orbit_indices, origin_ind, minVolume, boundary_only);
+
+		int number_of_vertices_new = tri.mesh.number_of_vertices();
+		int number_of_cells_new    = tri.mesh.number_of_cells();
+
+		std::cout << "Number of vertices pre: "  << number_of_vertices_old << std::endl;
+		std::cout << "Number of vertices post: " << number_of_vertices_new << std::endl;
+
+		std::cout << "Number of cells pre: "  << number_of_cells_old << std::endl;
+		std::cout << "Number of cells post: " << number_of_cells_new << std::endl;
 
 		std::cout << "Origin index pre : " << origin_ind_pre << std::endl;
 		std::cout << "Origin index post: " << origin_ind     << std::endl;
 
 		std::cout << "Orbit indices.size pre : " << orbit_indices_pre.size() << std::endl;
 		std::cout << "Orbit indices.size post: " << orbit_indices.size()     << std::endl;
+	}
 
+	if (addOrbitpointsMEL) {
 		// Write orbitpoints and amount they were moved to a file
 		std::ofstream feil;
 		feil.open("out/" + FILENAME_base + "orbitpoints.csv");
