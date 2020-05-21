@@ -124,6 +124,9 @@ public:
 	// generate a regular triangulation from the points of the mesh with random weights drawn from a normal dist with given variance
 	Regular
 	generateRandomRegular(double variance);
+
+	void
+	replaceMeshByRegular(Regular reg, double variance, std::vector<int> &orbitinds, int &originind, double minVolume=0., bool boundary_only=true);
 	
 	void
 	replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume=0., bool boundary_only=true);

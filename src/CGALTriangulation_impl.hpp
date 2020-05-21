@@ -79,7 +79,7 @@ CGALTriangulation<TKernel>::toIndexed() const
                                    
     for(auto it = mesh.cells_begin(); it != mesh.cells_end(); ++it)
         if(it->info() != -1)
-            ret.tets.push_back(std::array<unsigned int, 4>{it->vertex(0)->info(), it->vertex(1)->info(), it->vertex(2)->info(), it->vertex(3)->info()});
+            ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int) it->vertex(0)->info(), (unsigned int) it->vertex(1)->info(), (unsigned int) it->vertex(2)->info(), (unsigned int) it->vertex(3)->info()});
     
     return ret;
 }
@@ -1326,12 +1326,20 @@ CGALTriangulation<TKernel>::generateRandomRegular(double variance){
 	return reg;
 }
 
+
 template<class TKernel>
 void
 CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
 
 	CGALTriangulation<TKernel>::Regular reg;
 	reg = generateRandomRegular(variance);
+
+	replaceMeshByRegular(reg, variance, orbitinds, originind, minVolume, boundary_only);
+}
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
 
 	// Translate to IndexedTetmesh
     IndexedTetMesh ret;
