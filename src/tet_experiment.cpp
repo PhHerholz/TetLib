@@ -251,37 +251,6 @@ Eigen::MatrixXd  normalizeHeatValues(Eigen::MatrixXd h) {
 	return h_normed;
 }
 
-double rand_normal(double mean, double stddev)
-{//Box muller method
-    static double n2 = 0.0;
-    static int n2_cached = 0;
-    if (!n2_cached)
-    {
-        double x, y, r;
-        do
-        {
-            x = 2.0*rand()/RAND_MAX - 1;
-            y = 2.0*rand()/RAND_MAX - 1;
-
-            r = x*x + y*y;
-        }
-        while (r == 0.0 || r > 1.0);
-        {
-            double d = sqrt(-2.0*log(r)/r);
-            double n1 = x*d;
-            n2 = y*d;
-            double result = n1*stddev + mean;
-            n2_cached = 1;
-            return result;
-        }
-    }
-    else
-    {
-        n2_cached = 0;
-        return n2*stddev + mean;
-    }
-}
-
 int main(int argc, char *argv[])
 {
 
@@ -290,7 +259,7 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	double variance;
+	double regnoise;
 	std::string run_postfix = "";
 	// no gui output
 	bool silent = true;
@@ -300,10 +269,10 @@ int main(int argc, char *argv[])
 	std::string run_folder = argv[1];
 
 	if (argc >= 3) {
-		variance = std::stod(argv[2]);
-		if (variance > 1e-10) {
-			std::cout << "Variance specified" << std::endl;
-			run_postfix += std::to_string(variance) + std::string("_"); 
+		regnoise = std::stod(argv[2]);
+		if (regnoise > 1e-10) {
+			std::cout << "Regnoise specified" << std::endl;
+			run_postfix += std::to_string(regnoise) + std::string("_"); 
 		}
 	}
 
@@ -351,11 +320,15 @@ int main(int argc, char *argv[])
 			std::cout << "Something went wrong loading the mesh" << std::endl;	
 		}
 
-		if (variance > 0) {
+		if (regnoise > 0) {
 			// #################################
 			// Replace by regular triangulation
 			// #################################
 			
+			// set noise ifo mels
+			double mels = tri.meanEdgeLengthSquared();
+			double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
+
 			std::cout << "Old orbitinds size: " << orbitinds.size() << std::endl;
 			std::cout << "Old orbitinds: ";
 			for (int i : orbitinds ) std::cout << i << " ";
