@@ -721,12 +721,12 @@ void
 CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regular reg, Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M)
 {
     std::vector<Eigen::Triplet<double>> triplets;
-    const int nv = reg.mesh.number_of_vertices();
+    const int nv = reg.number_of_vertices();
     
     // turn off some costly sanity tests
     bool dbg = false;
     
-    std::vector<typename TKernel::Vector_3> vecs(reg.mesh.number_of_vertices());
+    std::vector<typename TKernel::Vector_3> vecs(reg.number_of_vertices());
     
     if(M)
     {
@@ -743,9 +743,9 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
         M->outerIndexPtr()[nv] = nv;
     }
     
-    for(auto h : reg.mesh.finite_cell_handles())
+    for(auto h : reg.finite_cell_handles())
     {
-        auto tet = reg.mesh.tetrahedron(h);
+        auto tet = reg.tetrahedron(h);
         double vol = tet.volume();
         
         for(int i = 0; i < 4; ++i)
@@ -755,28 +755,38 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
                 const int k = Triangulation::next_around_edge(i, j);
                 const int l = Triangulation::next_around_edge(j, i);
 
+
+				typedef typename TKernel::Plane_3 Plane;
+				typedef typename TKernel::Line_3  Line;
+				typedef typename TKernel::Segment_3  Segment;
+
 				//auto cc = CGAL::circumcenter(tet);
-				auto tet_dual  = reg.mesh.dual(h);
-				auto face_dual = reg.mesh.dual(h, tet[l]); // facet (tet[i], tet[j], tet[k]);
+				auto tet_dual  = reg.dual(h);
+				auto face_dual_res = reg.dual(h, l); // facet (tet[i], tet[j], tet[k]);
+				Segment face_dual;
+				assign(face_dual, face_dual_res);
 
 
 				// auto ccf = CGAL::circumcenter(tet[i], tet[j], tet[k]);
-				typedef typename TKernel::Plane_3 Plane;
-				typedef typename TKernel::Line_3  Line;
 
 				Line  fd_line   = face_dual.supporting_line();
-				Plane tri_plane = (tet[i], tet[j], tet[k]);
-				auto ccf = intersection(tri_plane, fd_line);
+				Plane tri_plane(tet[i], tet[j], tet[k]);
+				auto ccf_res = intersection(tri_plane, fd_line);
+				auto ccf = boost::get<Point>(&*ccf_res);
 
 				// auto cce = CGAL::circumcenter(tet[i], tet[j]);
 				auto edge = tet[j] - tet[i];
 				Line edge_line(tet[i], edge);
-				Plane dual_plane(tet_dual, edge_line);
-				auto cce = intersection(dual_plane, edge_line);
+				Plane dual_plane(tet_dual, edge_line.to_vector());
+				//auto cce = intersection(dual_plane, edge_line);
+				
+				// access point directly since intersection cannot be a line in this case
+				auto cce_res = intersection(dual_plane, edge_line);
+				auto cce = boost::get<Point>(&*cce_res);
 
-				std::cout << "Calced" << std::endl;
+				//std::cout << "Calced" << std::endl;
 		
-				auto nrml = 0.5 * CGAL::cross_product(ccf - cce, tet_dual - cce);
+				auto nrml = 0.5 * CGAL::cross_product(*ccf - *cce, tet_dual - *cce);
 				double val = (nrml * edge) / edge.squared_length();
 
 				/*
@@ -791,8 +801,8 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
                 if(M)
                 {
 					// TODO: eddge.squared_length the correct thing here?
-                    M->valuePtr()[r] += val * (edge.squared_length) / 6.;
-                    M->valuePtr()[s] += val * (edge.squared_length) / 6.;
+                    M->valuePtr()[r] += val * (edge.squared_length()) / 6.;
+                    M->valuePtr()[s] += val * (edge.squared_length()) / 6.;
                 }
     
                 triplets.emplace_back(r, r, -val);
@@ -814,7 +824,7 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
     {
         Eigen::MatrixXd V(nv, 3);
         
-        for(auto h : reg.mesh.finite_vertex_handles())
+        for(auto h : reg.finite_vertex_handles())
         {
             V(h->info(), 0) = h->point().x();
             V(h->info(), 1) = h->point().y();
@@ -1312,7 +1322,7 @@ CGALTriangulation<TKernel>::generateRandomRegular(double variance){
 	//Regular reg;
 	CGALTriangulation<TKernel>::Regular reg;
 	reg.insert(points.begin(), points.end());
-	std::cout << reg.is_valid() << std::endl;
+	std::cout << "Created regular triangulation. Valid?=" << reg.is_valid() << std::endl;
 
 	//handle infos: (finite vertex infos have been set when inserting them)
     reg.infinite_vertex()->info() = -1;
@@ -1331,9 +1341,7 @@ template<class TKernel>
 void
 CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
 
-	CGALTriangulation<TKernel>::Regular reg;
-	reg = generateRandomRegular(variance);
-
+	CGALTriangulation<TKernel>::Regular reg = generateRandomRegular(variance);
 	replaceMeshByRegular(reg, variance, orbitinds, originind, minVolume, boundary_only);
 }
 
@@ -1349,7 +1357,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, s
 	std::unordered_map<int, int> idconversion;
 
 	int inscounter = 0;
-    for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it)
+    for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it) {
         if(it->info() != -1){
 			ret.vertices[inscounter][0] = it->point().x();
 			ret.vertices[inscounter][1] = it->point().y();
@@ -1357,6 +1365,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, s
 			idconversion[it->info()] = inscounter;
 			inscounter++;
 		}
+	}
 
     for(auto it: reg.finite_cell_handles()){
 
@@ -1394,10 +1403,10 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, s
 
 		if(addCell)
 		{
-            ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int)idconversion[it->vertex(0)->info()],
-															(unsigned int)idconversion[it->vertex(1)->info()],
-															(unsigned int)idconversion[it->vertex(2)->info()],
-															(unsigned int)idconversion[it->vertex(3)->info()] });
+            ret.tets.push_back(std::array<unsigned int, 4>{(unsigned int) idconversion[it->vertex(0)->info()],
+														   (unsigned int) idconversion[it->vertex(1)->info()],
+														   (unsigned int) idconversion[it->vertex(2)->info()],
+														   (unsigned int) idconversion[it->vertex(3)->info()] });
 		}
 	}
     

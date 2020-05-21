@@ -30,21 +30,28 @@
 #include "IndexedTetMesh.hpp"
 
 #include <CGAL/Simple_cartesian.h>
+#include <CGAL/Exact_predicates_exact_constructions_kernel.h>
 
 typedef CGAL::Simple_cartesian<double> Kernel;
+//typedef CGAL::Exact_predicates_exact_constructions_kernel Kernel; //EPECKernel;
 typedef Kernel::Point_3 Point;
 
 
 #include <Eigen/Dense>
 
-
-void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec)
+void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
 {
 	const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
 
 	// Construct A 
-	Eigen::SparseMatrix<double> A_fem, A_dec, L_fem, L_dec, M;
+	Eigen::SparseMatrix<double> A_fem, A_dec, A_decreg, L_fem, L_dec, L_r, M, M_r;
+
+	if (reg) {
+		std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
+		tri.DECLaplacianRegular(*reg, L_r, &M_r);
+	}
+
 	//tri.massMatrix(M);
 	tri.FEMLaplacian(L_fem);
 
@@ -77,6 +84,21 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Ei
 
 	solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
 	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
+
+	if (reg) {	
+		
+		std::cout << "------------------- REG L CHECK ------------------" << std::endl;
+		std::cout << "(L_dec - L_r).squaredNorm(): ";
+		std::cout << (L_dec - L_r).squaredNorm() << std::endl;
+		std::cout << "------------------- /REG L CHECK -----------------" << std::endl;
+
+
+		A_decreg = M_r - t * L_r;
+		std::cout << "DECreg: " << std::endl;
+		std::cout << A_decreg.rows() << ", " << A_decreg.cols()  << std::endl;
+		solveConstrainedSymmetric(A_decreg, B, boundary_indices, constrValues, h_decreg);
+		std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
+	}
 }
 
 
@@ -270,7 +292,7 @@ int main(int argc, char *argv[])
 
 	if (argc >= 3) {
 		regnoise = std::stod(argv[2]);
-		if (regnoise > 1e-10) {
+		if (regnoise >= 0) {
 			std::cout << "Regnoise specified" << std::endl;
 			run_postfix += std::to_string(regnoise) + std::string("_"); 
 		}
@@ -290,6 +312,11 @@ int main(int argc, char *argv[])
 	}
 
 	CGALTriangulation<Kernel> tri;
+
+	// regular triangulation used for the DECLaplacianRegular and stored externally. 
+	CGALTriangulation<Kernel>::Regular *reg=nullptr;
+	CGALTriangulation<Kernel>::Regular regtri;
+
 	int originind;
 	std::vector<int> orbitinds;
 
@@ -320,7 +347,7 @@ int main(int argc, char *argv[])
 			std::cout << "Something went wrong loading the mesh" << std::endl;	
 		}
 
-		if (regnoise > 0) {
+		if (regnoise >= 0) {
 			// #################################
 			// Replace by regular triangulation
 			// #################################
@@ -333,7 +360,17 @@ int main(int argc, char *argv[])
 			std::cout << "Old orbitinds: ";
 			for (int i : orbitinds ) std::cout << i << " ";
 			std::cout << std::endl;
+
 			tri.replaceMeshByRegular(variance, orbitinds, originind);
+
+			// generate the regular triangulation
+			//CGALTriangulation<Kernel>::Regular regtri = tri.generateRandomRegular(variance);
+			regtri = tri.generateRandomRegular(variance);
+			reg    = &regtri;
+
+			// replace the triangulation by the regular one
+			tri.replaceMeshByRegular(*reg, variance, orbitinds, originind, 0., true);
+
 			std::cout << "New orbitinds size: " << orbitinds.size() << std::endl;
 			std::cout << "New orbitinds: ";
 			for (int i : orbitinds ) std::cout << i << " ";
@@ -401,13 +438,14 @@ int main(int argc, char *argv[])
 
 		/* ################## HEAT DIFFUSION ################ */
 
+
 		if (orbitinds.size() < 1) {
 			std::cout << "No orbit points in file, abort" << std::endl;	
 			return 0;
 		}
 
-		Eigen::MatrixXd h_fem, h_dec, h;
-		solveHeatProblem(tri, h_fem, h_dec);
+		Eigen::MatrixXd h_fem, h_dec, h, h_decreg;
+		solveHeatProblem(tri, reg, h_fem, h_dec, h_decreg);
 		//solveDirichletProblem(tri, h_fem, h_dec);
 
 		std::cout << "...write heat vals to file... " << std::endl;
@@ -420,10 +458,10 @@ int main(int argc, char *argv[])
 		feil << "orbit indices" << std::endl;
 		for(int i=0; i < orbitinds.size() - 1; i++) feil << orbitinds[i] << ", ";
 		feil << orbitinds[orbitinds.size()-1] << std::endl;
-		feil << "h_fem" << ", " << "h_dec" << std::endl;
+		feil << "h_fem" << ", " << "h_dec" << ", " << "h_decreg" << std::endl;
 
 		for (int r = 0; r < h_fem.rows(); ++r) {
-			feil << h_fem(r) << ", " << h_dec(r) << std::endl;
+			feil << h_fem(r) << ", " << h_dec(r) << ", " << h_decreg(r) << std::endl;
 		}
 		feil.close();
 
