@@ -603,7 +603,7 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
     const int nv = mesh.number_of_vertices();
     
     // turn off some costly sanity tests
-    bool dbg = false;
+    bool dbg = true;
     
     std::vector<typename TKernel::Vector_3> vecs(mesh.number_of_vertices());
     
@@ -724,7 +724,8 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
     const int nv = reg.number_of_vertices();
     
     // turn off some costly sanity tests
-    bool dbg = false;
+    bool dbg = true;
+    bool dbg2 = false;
     
     std::vector<typename TKernel::Vector_3> vecs(reg.number_of_vertices());
     
@@ -755,17 +756,14 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
                 const int k = Triangulation::next_around_edge(i, j);
                 const int l = Triangulation::next_around_edge(j, i);
 
-
 				typedef typename TKernel::Plane_3 Plane;
 				typedef typename TKernel::Line_3  Line;
 				typedef typename TKernel::Segment_3  Segment;
 
-				//auto cc = CGAL::circumcenter(tet);
 				auto tet_dual  = reg.dual(h);
 				auto face_dual_res = reg.dual(h, l); // facet (tet[i], tet[j], tet[k]);
 				Segment face_dual;
 				assign(face_dual, face_dual_res);
-
 
 				// auto ccf = CGAL::circumcenter(tet[i], tet[j], tet[k]);
 
@@ -777,24 +775,38 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
 				// auto cce = CGAL::circumcenter(tet[i], tet[j]);
 				auto edge = tet[j] - tet[i];
 				Line edge_line(tet[i], edge);
-				Plane dual_plane(tet_dual, edge_line.to_vector());
+				Plane dual_plane(tet_dual, edge);
 				//auto cce = intersection(dual_plane, edge_line);
 				
 				// access point directly since intersection cannot be a line in this case
 				auto cce_res = intersection(dual_plane, edge_line);
 				auto cce = boost::get<Point>(&*cce_res);
 
-				//std::cout << "Calced" << std::endl;
-		
-				auto nrml = 0.5 * CGAL::cross_product(*ccf - *cce, tet_dual - *cce);
-				double val = (nrml * edge) / edge.squared_length();
+				auto edge_normalized = edge / sqrt(edge.squared_length());
+				Point cce_const = CGAL::ORIGIN + (edge_normalized * (tet_dual - tet[i])) * edge_normalized;
 
-				/*
-				if(std::abs(val - val2) > 1e-10) std::cout << "error: " << val << " " << val2 << std::endl;
-			  
-				vecs[r] += nrml;
-				vecs[s] -= nrml;
-				*/
+				//std::cout << "Calced" << std::endl;
+
+				// ----------------------------------------------
+				// construct ccf hopefully correctly?
+				double tri_area = 0.5 * sqrt(CGAL::cross_product(tet[j] - tet[i], tet[k] - tet[i]).squared_length());
+
+				Point ccf_const = tet[i]; 
+				// contrib of point k
+				auto e_k = (tet[j] - tet[i]) / sqrt((tet[j]-tet[i]).squared_length());
+				auto normal_k   = tet[k] - (tet[i] + e_k * ((tet[k]- tet[i]) * e_k));
+				normal_k = normal_k / sqrt(normal_k.squared_length()) * sqrt((tet[j] - tet[i]).squared_length());
+				ccf_const += (((tet[k] - tet[i]).squared_length() + h->vertex(i)->point().weight() - h->vertex(k)->point().weight()) * normal_k) / (4. * tri_area) ; 
+				//contrib of point j
+				auto e_j = (tet[k] - tet[i]) / sqrt((tet[k]-tet[i]).squared_length());
+				auto normal_j   = tet[j] - (tet[i] + e_j * ((tet[j]- tet[i]) * e_j));
+				normal_j = normal_j / sqrt(normal_j.squared_length()) * sqrt((tet[k] - tet[i]).squared_length());
+				ccf_const += (((tet[j] - tet[i]).squared_length() + h->vertex(i)->point().weight() - h->vertex(j)->point().weight()) * normal_j) / (4. * tri_area); 
+
+				//auto nrml_const = 0.5 * CGAL::cross_product(ccf_const - cce_const, tet_dual - cce_const); 
+				auto nrml_const = 0.5 * CGAL::cross_product(ccf_const - *cce, tet_dual - *cce);
+				double val = (nrml_const * edge) / edge.squared_length();
+				// ----------------------------------------------
                 const int r = h->vertex(i)->info();
                 const int s = h->vertex(j)->info();
             
@@ -804,12 +816,76 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
                     M->valuePtr()[r] += val * (edge.squared_length()) / 6.;
                     M->valuePtr()[s] += val * (edge.squared_length()) / 6.;
                 }
-    
+
+				if (dbg) {
+                    auto cc_nr  = CGAL::circumcenter(tet);
+                    auto ccf_nr = CGAL::circumcenter(tet[i], tet[j], tet[k]);
+                    auto cce_nr = CGAL::circumcenter(tet[i], tet[j]);
+            
+                    auto nrml_nr = 0.5 * CGAL::cross_product(ccf_nr - cce_nr, cc_nr - cce_nr);
+                    double val2 = (nrml_nr * edge) / edge.squared_length();
+
+					Point cce_const = tet[i] + 0.5 * (edge.squared_length() + h->vertex(i)->point().weight() - h->vertex(j)->point().weight()) * (edge / sqrt(edge.squared_length()));
+
+					if (std::abs(val - val2) > 1e-13) {
+
+						std::cout << std::endl << "Val  : " << val << std::endl;
+						std::cout << "Val2 : " << val2 << std::endl;
+						std::cout << "CC  - CC_nr  = " << tet_dual - cc_nr << std::endl;
+						std::cout << "CCF - CCF_nr = " << *ccf - ccf_nr << std::endl;
+						std::cout << "CCE - CCE_nr = " << *cce - cce_nr << std::endl;
+
+						std::cout << std::endl;
+						std::cout << "CCF      : " << *ccf      << std::endl;
+						std::cout << "CCF_nr   : " << ccf_nr    << std::endl;
+						std::cout << "ccf_const: " << ccf_const << std::endl;
+
+						std::cout << std::endl;
+						std::cout << "CCE       : " << *cce      << std::endl;
+						std::cout << "CCE_nr    : " << cce_nr    << std::endl;
+						std::cout << "CCE_const : " << cce_const << std::endl;
+
+					}
+
+                }
+
+				if (dbg2) {
+					
+					auto a2 = tet[i] - tet[l];
+					auto b = tet[j] - tet[l];
+					auto c = tet[k] - tet[l];
+					
+					auto b2 = tet[i] - tet[k];
+					auto c2 = tet[j] - tet[i];
+					auto a =  tet[k] - tet[j];
+					
+					 
+					const double n = (a * b2) * (b2 * c2) * (c * a2) + (b2 * c2) * (c2 * a) * (a2 * b)
+					+ (c2 * a) * (a * b2) * (b * c) + (a * b2) * (b2 * c2) * (c2 * a);
+				  
+					const double d = 192 * vol * 0.25 * CGAL::cross_product(b2, a).squared_length();
+					const double fac = std::abs(d) < 1e-24 ? .0 : 1. / d;
+					const double val3 = -n * (a * b2) * fac;
+
+					
+					if (std::abs(val - val3) > 1e-13) {
+						std::cout << "ERROR: " << val << "!= " << val3 << std::endl;
+					}
+					val = val3;
+				}
+
                 triplets.emplace_back(r, r, -val);
                 triplets.emplace_back(s, s, -val);
                     
                 triplets.emplace_back(r, s, val);
                 triplets.emplace_back(s, r, val);
+
+				/*
+				if(std::abs(val - val2) > 1e-10) std::cout << "error: " << val << " " << val2 << std::endl;
+			  
+				vecs[r] += nrml;
+				vecs[s] -= nrml;
+				*/
 
             }
     }
@@ -820,7 +896,7 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
     L.resize(nv, nv);
     L.setFromTriplets(triplets.begin(), triplets.end());
     
-    if(dbg)
+    if(dbg || dbg2)
     {
         Eigen::MatrixXd V(nv, 3);
         
@@ -1342,12 +1418,12 @@ void
 CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
 
 	CGALTriangulation<TKernel>::Regular reg = generateRandomRegular(variance);
-	replaceMeshByRegular(reg, variance, orbitinds, originind, minVolume, boundary_only);
+	replaceMeshByRegular(reg, orbitinds, originind, minVolume, boundary_only);
 }
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
+CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
 
 	// Translate to IndexedTetmesh
     IndexedTetMesh ret;
@@ -1355,6 +1431,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, s
 
 	ret.vertices.resize(nv);
 	std::unordered_map<int, int> idconversion;
+	std::unordered_map<int, int> idconversion_inverse;
 
 	int inscounter = 0;
     for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it) {
@@ -1363,6 +1440,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, s
 			ret.vertices[inscounter][1] = it->point().y();
 			ret.vertices[inscounter][2] = it->point().z();
 			idconversion[it->info()] = inscounter;
+			idconversion_inverse[inscounter] = it->info();
 			inscounter++;
 		}
 	}
@@ -1373,29 +1451,32 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, s
 
 		// check each cell if (!boundary_only):
 		bool checkvolcell = false;
-		if (!boundary_only){
-			std::cout << "Check all Cells" << std::endl;		
-			checkvolcell = true;
-		}
 
-		// if boundary only: check if cell is on boundary
-		if (!checkvolcell) {
-			for (int i = 0; i < 4 ; ++i) {
-				if (reg.mirror_vertex(it, i)->info() == -1) {
-					//std::cout << "Boundary cell " << std::endl;
-					checkvolcell = true;
+		if (minVolume > 0) {
+			if (!boundary_only){
+				std::cout << "Check all Cells" << std::endl;		
+				checkvolcell = true;
+			}
+
+			// if boundary only: check if cell is on boundary
+			if (!checkvolcell) {
+				for (int i = 0; i < 4 ; ++i) {
+					if (reg.mirror_vertex(it, i)->info() == -1) {
+						//std::cout << "Boundary cell " << std::endl;
+						checkvolcell = true;
+					}
 				}
 			}
-		}
 
-		if (checkvolcell) {
-			auto tet = reg.tetrahedron(it);
-			double vol = tet.volume();
-			//std::cout << "Vol:    " << vol               << std::endl;
-			//std::cout << "Minvol: " << minVolume << std::endl;
-			if (vol < minVolume){
-				//std::cout << "Raus damit!" << std::endl;	
-				addCell = false;
+			if (checkvolcell) {
+				auto tet = reg.tetrahedron(it);
+				double vol = tet.volume();
+				//std::cout << "Vol:    " << vol               << std::endl;
+				//std::cout << "Minvol: " << minVolume << std::endl;
+				if (vol < minVolume){
+					//std::cout << "Raus damit!" << std::endl;	
+					addCell = false;
+				}
 			}
 		}
 
@@ -1413,21 +1494,27 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, double variance, s
 	// replace triangulation with random reg triangulation
 	ret.convert(*this);
 
+	// reset vertex infos to old numbering	
+    for(auto it = mesh.vertices_begin(); it != mesh.vertices_end(); ++it) {
+        if(it->info() != -1){
+			it->info() = idconversion_inverse[it->info()];
+		}
+	}
+
+
 	// convert origin and orbit indices
 	if (originind >= 0) {
 		int new_originind = -1;
-		if (idconversion.find(originind) != idconversion.end()) {
-			new_originind = idconversion[originind];
-		} else {
+		if (!(idconversion.find(originind) != idconversion.end())) {
 			std::cout << "origin lost during noising" << std::endl;	
+			originind = -1;
 		}
-		originind = new_originind;
 	}
 
 	std::vector<int> new_orbitinds;
 	for (int i: orbitinds) {
 		if (idconversion.find(i) != idconversion.end()) {
-			new_orbitinds.push_back(idconversion[i]);	
+			new_orbitinds.push_back(i);	
 		}
 	}
 	orbitinds = new_orbitinds;

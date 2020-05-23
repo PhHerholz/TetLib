@@ -56,8 +56,8 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	tri.FEMLaplacian(L_fem);
 
 	std::cout << "Using Mixed DEC" << std::endl;
-	tri.DECLaplacianMixed(L_dec, &M);
-	// tri.DECLaplacian(L_dec, &M);
+	// tri.DECLaplacianMixed(L_dec, &M);
+	tri.DECLaplacian(L_dec, &M);
 	const double t = tri.meanEdgeLengthSquared();
 	A_fem = M + t * L_fem;
 	A_dec = M - t * L_dec; 
@@ -90,6 +90,15 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 		std::cout << "------------------- REG L CHECK ------------------" << std::endl;
 		std::cout << "(L_dec - L_r).squaredNorm(): ";
 		std::cout << (L_dec - L_r).squaredNorm() << std::endl;
+		std::cout << "(L_dec - L_fem).squaredNorm(): ";
+		std::cout << (L_dec - L_fem).squaredNorm() << std::endl;
+		/*
+		std::cout << "Samples: L_dec" << std::endl;
+		std::cout << L_dec.block(0,0,100,100) << std::endl;
+		std::cout << "Samples: L_r" << std::endl;
+		std::cout << L_r.block(0,0,100,100) << std::endl;
+		*/
+
 		std::cout << "------------------- /REG L CHECK -----------------" << std::endl;
 
 
@@ -361,15 +370,20 @@ int main(int argc, char *argv[])
 			for (int i : orbitinds ) std::cout << i << " ";
 			std::cout << std::endl;
 
-			tri.replaceMeshByRegular(variance, orbitinds, originind);
+
+			std::cout << "Number of Cells pre: " << tri.mesh.number_of_finite_cells() << std::endl;
 
 			// generate the regular triangulation
-			//CGALTriangulation<Kernel>::Regular regtri = tri.generateRandomRegular(variance);
 			regtri = tri.generateRandomRegular(variance);
 			reg    = &regtri;
 
+			std::cout << "Number of Cells reg: " << reg->number_of_finite_cells() << std::endl;
+
 			// replace the triangulation by the regular one
-			tri.replaceMeshByRegular(*reg, variance, orbitinds, originind, 0., true);
+			tri.replaceMeshByRegular(*reg, orbitinds, originind);
+
+
+			std::cout << "Number of Cells post: " << tri.mesh.number_of_finite_cells() << std::endl;
 
 			std::cout << "New orbitinds size: " << orbitinds.size() << std::endl;
 			std::cout << "New orbitinds: ";
