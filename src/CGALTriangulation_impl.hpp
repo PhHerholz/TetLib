@@ -603,7 +603,7 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
     const int nv = mesh.number_of_vertices();
     
     // turn off some costly sanity tests
-    bool dbg = true;
+    bool dbg = false;
     
     std::vector<typename TKernel::Vector_3> vecs(mesh.number_of_vertices());
     
@@ -725,7 +725,8 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
     
     // turn off some costly sanity tests
     bool dbg = true;
-    bool dbg2 = false;
+	bool dbg2 = false;
+    bool dbg3 = false;
     
     std::vector<typename TKernel::Vector_3> vecs(reg.number_of_vertices());
     
@@ -817,7 +818,8 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
                     M->valuePtr()[s] += val * (edge.squared_length()) / 6.;
                 }
 
-				if (dbg) {
+				if (dbg2) {
+					// compare with non-weighte circumcenter calls (only makes sense if weights are all 0)
                     auto cc_nr  = CGAL::circumcenter(tet);
                     auto ccf_nr = CGAL::circumcenter(tet[i], tet[j], tet[k]);
                     auto cce_nr = CGAL::circumcenter(tet[i], tet[j]);
@@ -849,7 +851,8 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
 
                 }
 
-				if (dbg2) {
+				if (dbg3) {
+					// compare to phillipps dec impl (only makes sense if weights are all 0)
 					
 					auto a2 = tet[i] - tet[l];
 					auto b = tet[j] - tet[l];
@@ -871,7 +874,13 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
 					if (std::abs(val - val3) > 1e-13) {
 						std::cout << "ERROR: " << val << "!= " << val3 << std::endl;
 					}
-					val = val3;
+				}
+
+				if (r > nv) {
+					std::cout << "r " << r << " OUT!!!!!!" << std::endl;	
+				}
+				if (s > nv) {
+					std::cout << "s " << s << " OUT!!!!!!" << std::endl;	
 				}
 
                 triplets.emplace_back(r, r, -val);
@@ -896,8 +905,9 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
     L.resize(nv, nv);
     L.setFromTriplets(triplets.begin(), triplets.end());
     
-    if(dbg || dbg2)
+    if(dbg)
     {
+		// check linear precision
         Eigen::MatrixXd V(nv, 3);
         
         for(auto h : reg.finite_vertex_handles())
@@ -1423,7 +1433,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<in
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
+CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
 
 	// Translate to IndexedTetmesh
     IndexedTetMesh ret;
@@ -1440,7 +1450,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, std::vector<int> &
 			ret.vertices[inscounter][1] = it->point().y();
 			ret.vertices[inscounter][2] = it->point().z();
 			idconversion[it->info()] = inscounter;
-			idconversion_inverse[inscounter] = it->info();
+			//idconversion_inverse[inscounter] = it->info();
 			inscounter++;
 		}
 	}
@@ -1495,9 +1505,9 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, std::vector<int> &
 	ret.convert(*this);
 
 	// reset vertex infos to old numbering	
-    for(auto it = mesh.vertices_begin(); it != mesh.vertices_end(); ++it) {
+    for(auto it = reg.vertices_begin(); it != reg.vertices_end(); ++it) {
         if(it->info() != -1){
-			it->info() = idconversion_inverse[it->info()];
+			it->info() = idconversion[it->info()];
 		}
 	}
 
@@ -1505,16 +1515,17 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular reg, std::vector<int> &
 	// convert origin and orbit indices
 	if (originind >= 0) {
 		int new_originind = -1;
-		if (!(idconversion.find(originind) != idconversion.end())) {
+		if (idconversion.find(originind) != idconversion.end()) {
+			originind = idconversion[originind];
+		} else {
 			std::cout << "origin lost during noising" << std::endl;	
-			originind = -1;
 		}
 	}
 
 	std::vector<int> new_orbitinds;
 	for (int i: orbitinds) {
 		if (idconversion.find(i) != idconversion.end()) {
-			new_orbitinds.push_back(i);	
+			new_orbitinds.push_back(idconversion[i]);	
 		}
 	}
 	orbitinds = new_orbitinds;

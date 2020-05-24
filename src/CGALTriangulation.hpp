@@ -126,7 +126,7 @@ public:
 	generateRandomRegular(double variance);
 
 	void
-	replaceMeshByRegular(Regular reg, std::vector<int> &orbitinds, int &originind, double minVolume=0., bool boundary_only=true);
+	replaceMeshByRegular(Regular &reg, std::vector<int> &orbitinds, int &originind, double minVolume=0., bool boundary_only=true);
 	
 	void
 	replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume=0., bool boundary_only=true);
