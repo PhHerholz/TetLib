@@ -182,6 +182,10 @@ double tf (double x, double y, double z) {
 	return pow(sqrt(x2 + y2) - R, 2) + z2 - r2;
 }
 
+double sf (double x, double y, double z, double r) {
+	return x*x + y*y + z*z - r*r;
+}
+
 template<class TKernel>
 typename TKernel::FT
 torus_fun (const typename TKernel::Point_3& p)
@@ -273,12 +277,88 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, bool use_torus)
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
 }
 
+
+template <typename FT, typename P>
+class FT_to_point_function_wrapper : public CGAL::cpp98::unary_function<P, FT>
+{
+  typedef FT (*Implicit_function)(FT, FT, FT);
+  Implicit_function function;
+public:
+  typedef P Point;
+  FT_to_point_function_wrapper(Implicit_function f) : function(f) {}
+  FT operator()(Point p) const { return function(p.x(), p.y(), p.z()); }
+};
+
+template<class TKernel>
+void 
+meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
+{
+	using namespace CGAL::parameters;
+	// Domain
+	typedef FT_to_point_function_wrapper<typename TKernel::FT, typename TKernel::Point_3> Function;
+	typedef CGAL::Implicit_multi_domain_to_labeling_function_wrapper<Function>
+															Function_wrapper;
+	typedef typename Function_wrapper::Function_vector Function_vector;
+	typedef CGAL::Labeled_mesh_domain_3<TKernel> Mesh_domain;
+	// Triangulation
+	typedef typename CGAL::Mesh_triangulation_3<Mesh_domain>::type Tr;
+	typedef CGAL::Mesh_complex_3_in_triangulation_3<Tr> C3t3;
+	// Mesh Criteria
+	typedef CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
+	typedef typename Mesh_criteria::Facet_criteria    Facet_criteria;
+	typedef typename Mesh_criteria::Cell_criteria     Cell_criteria;
+
+	typedef typename TKernel::Point_3 Point;
+
+	// sphere_function (const typename Point& p, double rad)
+
+	// Define functions
+	Function f1( [](double x, double y, double z) -> double{return sf(x, y, z, 1.0);} );
+	Function f2( [](double x, double y, double z) -> double{return sf(x, y, z, 0.5);} );
+	Function_vector v;
+	v.push_back(f1);
+	v.push_back(f2);
+	//v.push_back( [](Point p) -> typename TKernel::FT {return sphere_function<TKernel>(p, 1.0);} );
+	//v.push_back( [](Point p) -> typename TKernel::FT {return sphere_function<TKernel>(p, 0.5);} );
+	std::vector<std::string> vps;
+	vps.push_back("++");
+	vps.push_back("+-");
+
+	// DOMAIN
+	Mesh_domain domain(function = Function_wrapper(v, vps),
+					 bounding_object = typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.),
+					 relative_error_bound = 1e-6);
+	// CRITERIA
+	Facet_criteria facet_criteria(30, mOptions.facet_size, 0.02); // angle, size, approximation
+	Cell_criteria cell_criteria(mOptions.cell_radius_edge_ratio, mOptions.cell_size); // radius-edge ratio, size
+	Mesh_criteria criteria(facet_criteria, cell_criteria);
+	// Mesh generation
+	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, no_exude(), no_perturb());
+
+	if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
+	if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
+	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
+
+    indexed = ::internal::extractIndexed<TKernel>(c3t3);
+}
+
+
 template<class TKernel2, class TKernel>
 void
 meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, bool use_torus)
 {
     IndexedTetMesh indexed;
     meshSphere<TKernel2>(indexed, mOptions, use_torus);
+    indexed.convert(tri);
+}
+
+
+template<class TKernel2, class TKernel>
+void
+meshDoubleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions)
+{
+    IndexedTetMesh indexed;
+    meshDoubleSphere<TKernel2>(indexed, mOptions);
     indexed.convert(tri);
 }
 
