@@ -182,9 +182,26 @@ double tf (double x, double y, double z) {
 	return pow(sqrt(x2 + y2) - R, 2) + z2 - r2;
 }
 
-double sf (double x, double y, double z, double r) {
+double implicit_sphere_function(double x, double y, double z, double r, double mx, double my, double mz) {
+	return (x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz) - r*r;
+}
+
+/*
+double sf_outer (double x, double y, double z) {
+	double r = 3;
 	return x*x + y*y + z*z - r*r;
 }
+double sf_inner (double x, double y, double z) {
+	double r = 0.01;
+	return x*x + y*y + z*z - r*r;
+}
+
+template<double rad, double mx, double my, double mz> 
+double
+impl_circle_fun(double x double y double z){
+	return (x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz) - rad*rad;
+}
+*/
 
 template<class TKernel>
 typename TKernel::FT
@@ -195,12 +212,16 @@ struct meshingOptions {
     meshingOptions() : cell_size(0.1),
 					   cell_radius_edge_ratio(2.),
 					   facet_size(0.1),
+					   approx_val(0.005),
+					   boundingRad(5.),
 					   opt_lloyd(false),
 					   opt_perturb(false), 
 					   opt_exude(false)  {}
 	double cell_size;
 	double cell_radius_edge_ratio;
 	double facet_size;
+	double approx_val;
+	double boundingRad;
 	bool opt_lloyd;
 	bool opt_perturb;
 	bool opt_exude;
@@ -278,6 +299,13 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, bool use_torus)
 }
 
 
+template <int Sq_radius>
+double sphere_function (double x, double y, double z) // (c=(0,0,0), r=Sq_radius)
+{
+  double x2=x*x, y2=y*y, z2=z*z;
+  return (x2+y2+z2)/Sq_radius - 1;
+}
+
 template <typename FT, typename P>
 class FT_to_point_function_wrapper : public CGAL::cpp98::unary_function<P, FT>
 {
@@ -313,31 +341,72 @@ meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	// sphere_function (const typename Point& p, double rad)
 
 	// Define functions
-	Function f1( [](double x, double y, double z) -> double{return sf(x, y, z, 1.0);} );
-	Function f2( [](double x, double y, double z) -> double{return sf(x, y, z, 0.5);} );
+	Function f1( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, sqrt(1.), 0., 0., 0. );} );
+	Function f2( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, sqrt(2.), 0., 0., 0. );} );
+	Function f3( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, sqrt(3.), 0., 0., 0. );} );
+
+	//Function f1( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 1.0, 0., 0., 0. );} );
+	//Function f2( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 0.75, 0., 0., 0. );} );
+	//Function f3( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 0.5, 0., 0., 0. );} );
+
 	Function_vector v;
 	v.push_back(f1);
 	v.push_back(f2);
-	//v.push_back( [](Point p) -> typename TKernel::FT {return sphere_function<TKernel>(p, 1.0);} );
-	//v.push_back( [](Point p) -> typename TKernel::FT {return sphere_function<TKernel>(p, 0.5);} );
+	v.push_back(f3);
+
 	std::vector<std::string> vps;
-	vps.push_back("++");
-	vps.push_back("+-");
+	vps.push_back("++-");
+	vps.push_back("+--");
 
 	// DOMAIN
 	Mesh_domain domain(function = Function_wrapper(v, vps),
-					 bounding_object = typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.),
+					 // bounding_object = CGAL::Bbox_3(-3, -3, -3, 3, 3, 3), 
+					 bounding_object = typename TKernel::Sphere_3(CGAL::ORIGIN, mOptions.boundingRad*mOptions.boundingRad),
 					 relative_error_bound = 1e-6);
+	//marc:
+	//Mesh_domain domain(Function_wrapper(v,vps), typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.), 1e-6);
+
 	// CRITERIA
-	Facet_criteria facet_criteria(30, mOptions.facet_size, 0.02); // angle, size, approximation
+	//marc:
+	//Facet_criteria facet_criteria(30, 0.02, 0.005); // angle, size, approximation
+	Facet_criteria facet_criteria(30, mOptions.facet_size, mOptions.approx_val); // angle, size, approximation
+	//marc:
+	//Cell_criteria cell_criteria(2., 0.4); // radius-edge ratio, size
 	Cell_criteria cell_criteria(mOptions.cell_radius_edge_ratio, mOptions.cell_size); // radius-edge ratio, size
+	Mesh_criteria criteria(facet_criteria, cell_criteria);
+
+	// Mesh generation
+	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, no_exude(), no_perturb());
+	//if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
+	//if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
+	//if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
+
+
+	/*
+	// marcs code: (works as expected)
+	Function f1(&sphere_function<1>);
+	Function f2(&sphere_function<2>);
+	Function f3(&sphere_function<3>);
+	Function_vector v;
+	v.push_back(f1);
+	v.push_back(f2);
+	v.push_back(f3);
+	std::vector<std::string> vps;
+	vps.push_back("++-");
+	vps.push_back("+--");
+	// Domain (Warning: Sphere_3 constructor uses square radius !)
+	Mesh_domain domain(Function_wrapper(v,vps), typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.), 1e-6);
+	// Set mesh criteria
+	Facet_criteria facet_criteria(30, 0.02, 0.005); // angle, size, approximation
+	Cell_criteria cell_criteria(2., 0.4); // radius-edge ratio, size
 	Mesh_criteria criteria(facet_criteria, cell_criteria);
 	// Mesh generation
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, no_exude(), no_perturb());
-
-	if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
-	if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
-	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
+	// Perturbation (maximum cpu time: 10s, targeted dihedral angle: default)
+	CGAL::perturb_mesh_3(c3t3, domain, time_limit = 10);
+	// Exudation
+	CGAL::exude_mesh_3(c3t3,12);
+	*/
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
 }

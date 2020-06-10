@@ -343,8 +343,8 @@ void normalizeSphereBorder(CGALTriangulation<Kernel> &tri) {
 int main(int argc, char *argv[])
 {
 
-	if (argc < 8) {
-		std::cout << "Usage: " << argv[0] << " cellSize reRatio facetSize use_lloyd use_perturb use_exude regnoise silent minvol filter_border_only (ma_min_thr ma_max_thr invert)" << std::endl;
+	if (argc < 6) {
+		std::cout << "Usage: " << argv[0] << " cellSize ce_ratio aprox_val facet_size bounding_rad" << std::endl;
 		return EXIT_FAILURE;
 	}
 
@@ -362,40 +362,32 @@ int main(int argc, char *argv[])
 
 	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
 	meshingOptions mOptions;
-	double cellSize    = std::stod(argv[1]);
-	mOptions.cell_size  = cellSize;
+	mOptions.cell_size              = std::stod(argv[1]);
 	mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
-	double facetSize   = std::stod(argv[3]);
-	mOptions.facet_size = facetSize;
-	if (atoi(argv[4])) mOptions.opt_lloyd   = true;
-	if (atoi(argv[5])) mOptions.opt_perturb = true;
-	if (atoi(argv[6])) mOptions.opt_exude   = true;
-	double regnoise = std::stod(argv[7]);
-	if (atoi(argv[8])) silent = false;
+	mOptions.approx_val             = std::stod(argv[3]);
+	mOptions.facet_size             = std::stod(argv[4]);
+	mOptions.boundingRad            = std::stod(argv[5]);
+
+	double regnoise = -1;
+	silent = false;
+
+	/*
+	if (atoi(argv[5])) mOptions.opt_lloyd   = true;
+	if (atoi(argv[6])) mOptions.opt_perturb = true;
+	if (atoi(argv[7])) mOptions.opt_exude   = true;
+	regnoise = std::stod(argv[8]);
+	if (atoi(argv[9])) silent = false;
+	*/
+
+	std::cout << "dadada" << std::endl;
 
 	double minVolume     = 0.;
 	bool   boundary_only = true;
-	if (argc >= 10) {
-		minVolume = std::stod(argv[9]);
-	}
-	if (argc >= 11) {
-		if (!atoi(argv[10])){
-			boundary_only = false;	
-			std::cout << "...aply minvol filter to all cells" << std::endl;
-		}
-	}
 
 	// minangle colormap mapping options
 	double minangle_min_threshold = 0.;
 	double minangle_max_threshold = 70.5;
 	bool invert_minangle_cmap = true;
-
-	if (argc == 14) {
-		minangle_min_threshold = std::stod(argv[11]);	
-		minangle_max_threshold = std::stod(argv[12]);	
-		if (!atoi(argv[13])) invert_minangle_cmap = false;
-	}
-
 	bool addOrbitpointsMEL = false;
 
 	//int min_orbitpoints  	= std::atoi(argv[7]);
@@ -404,22 +396,15 @@ int main(int argc, char *argv[])
 	int min_orbitpoints = -1;
 	int n_flips = 0;
 
-	// TODO: torus argument not working in meshpolyhedron
-	bool torus=false;
-	//if (atoi(argv[7])) torus = true;
+	FILENAME_base = "DoubleSphere_";
 
-	FILENAME_base = "Sphere_";
-	if (torus) {
-		FILENAME_base = "Torus_";
-	}
+	for (int i=0; i < 5; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
-	for (int i=0; i < 7; ++i) FILENAME_base += argv[i+1] + std::string("_");
+	std::cout << " pre sphere " << std::endl;
+	meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 
-	meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions,torus);
 
-	if (!torus) {
-		normalizeSphereBorder(tri);	
-	}
+	std::cout << " post sphere " << std::endl;
 
 	int origin_ind = -1;
 	double origin_changedby=-1;
@@ -570,7 +555,7 @@ int main(int argc, char *argv[])
 		Eigen::MatrixXd x;
 		x.resize(tri.mesh.number_of_vertices(), 1);
 		x.setZero();
-	  //  solveDirichletProblem(tri, x);
+		//  solveDirichletProblem(tri, x);
 		
 		std::cout << "done" << std::endl;
 		
