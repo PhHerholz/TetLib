@@ -379,8 +379,6 @@ int main(int argc, char *argv[])
 	if (atoi(argv[9])) silent = false;
 	*/
 
-	std::cout << "dadada" << std::endl;
-
 	double minVolume     = 0.;
 	bool   boundary_only = true;
 
@@ -400,16 +398,15 @@ int main(int argc, char *argv[])
 
 	for (int i=0; i < 5; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
-	std::cout << " pre sphere " << std::endl;
 	meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
-
-
-	std::cout << " post sphere " << std::endl;
 
 	int origin_ind = -1;
 	double origin_changedby=-1;
 	std::vector<int> orbit_indices;
 	std::vector<double> orbit_changedby;
+
+	double mels = tri.meanEdgeLengthSquared();
+	std::cout << "MEL: " << sqrt(mels) << std::endl;
 
 	if (addOrbitpointsMEL) {
 		// #########################################
@@ -431,7 +428,6 @@ int main(int argc, char *argv[])
 		// ###########################################################
 
 		// set variance st that the std deviation of the reg weights is in the magnitude of mels * rgnoise
-		double mels = tri.meanEdgeLengthSquared();
 		double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
 
 		double origin_ind_pre = origin_ind;

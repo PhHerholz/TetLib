@@ -341,9 +341,9 @@ meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	// sphere_function (const typename Point& p, double rad)
 
 	// Define functions
-	Function f1( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, sqrt(1.), 0., 0., 0. );} );
-	Function f2( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, sqrt(2.), 0., 0., 0. );} );
-	Function f3( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, sqrt(3.), 0., 0., 0. );} );
+	Function f1( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 1.,  0., 0., 0. );} );
+	Function f2( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 1.5, 0., 0., 0. );} );
+	Function f3( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 2.,  0., 0., 0. );} );
 
 	//Function f1( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 1.0, 0., 0., 0. );} );
 	//Function f2( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 0.75, 0., 0., 0. );} );
