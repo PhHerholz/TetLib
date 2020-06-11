@@ -396,7 +396,7 @@ int main(int argc, char *argv[])
 
 	FILENAME_base = "DoubleSphere_";
 
-	for (int i=0; i < 2; ++i) FILENAME_base += argv[i+1] + std::string("_");
+	for (int i=0; i < 1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
 	meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 
