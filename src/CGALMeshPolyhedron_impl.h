@@ -211,9 +211,9 @@ torus_fun (const typename TKernel::Point_3& p)
 struct meshingOptions {
     meshingOptions() : cell_size(0.1),
 					   cell_radius_edge_ratio(2.),
-					   facet_size(0.1),
-					   approx_val(0.005),
-					   boundingRad(5.),
+					   facet_size(1.),
+					   approx_val(0.02),
+					   boundingRad(3.),
 					   opt_lloyd(false),
 					   opt_perturb(false), 
 					   opt_exude(false)  {}
