@@ -43,6 +43,7 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 {
 	/// retrieve the indices of all points lying on the three spherical shells by their distance to the origin
 
+	typedef CGALTriangulation<Kernel>::Point Point;
 	innerShell.clear();
 	middleShell.clear();
 	outerShell.clear();
@@ -51,10 +52,10 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 	double d_o = 2.0;
 	
 	// this is the smallest threshold that seems to find all points
-	eps=1e-5;
+	double eps=1e-5;
 	
-	for (auto vh: tri.finite_vertex_handles()) {
-		double dist = sqrt(CGAL::squared_distance(vh->point(), CGAL::ORIGIN));		
+	for (auto vh: tri.mesh.finite_vertex_handles()) {
+		double dist = sqrt(CGAL::squared_distance(vh->point(), Point(CGAL::ORIGIN)));		
 		if (dist < d_i + eps) {
 			// inner shell, includes all points in the hole (if filled by our reg tri insertion)
 			innerShell.push_back(vh->info());
@@ -67,6 +68,14 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 		}
 	}
 
+}
+
+void 
+loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, std::string filepath)
+{
+	// load Triangulation from file and read orbitpoints
+	tri.read(filepath);
+	retrieveShellIndices(tri, innerShell, middleShell, outerShell);
 }
 
 void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
@@ -261,45 +270,6 @@ void setTexture(const std::string filename, igl::opengl::ViewerData& viewerData)
     viewerData.set_texture(R, G, B);
 }
 
-int 
-loadMeshWithOrbitpoints(CGALTriangulation<Kernel> &tri, std::vector<int> &orbitinds, std::string filepath)
-{
-	// load Triangulation from file and read orbitpoints
-	tri.read(filepath);
-	std::cout << tri.mesh.number_of_vertices() << std::endl;
-
-	typedef CGALTriangulation<Kernel>::Vertex_handle Vertex_handle;
-	typedef CGALTriangulation<Kernel>::Point Point;
-
-	orbitinds.clear();
-
-	Point origin(0.,0.,0.);
-	int originind = -1;
-	
-	for (Vertex_handle vh: tri.mesh.finite_vertex_handles()) {
-		double dist = sqrt(CGAL::squared_distance(vh->point(), origin));		
-		//std::cout << std::endl << vh->point() << std::endl;
-		//std::cout << dist << std::endl;
-
-		if (dist < (1e-10)) {
-		// origin
-			if (originind < 0) {
-				originind = vh->info();
-			} else {
-				std::cout << "ERROR: File containts two origins" << std::endl;	
-				return 0;
-			}
-		}
-		if (fabs(dist - 0.5) < (1e-6)) {
-		// orbitpoints
-			orbitinds.push_back(vh->info());
-		}
-	}
-
-	std::cout << "Loaded file with " << orbitinds.size() << " orbitpoints" << std::endl;
-	orbitinds.push_back(originind);
-	return 1;
-}
 
 Eigen::MatrixXd  normalizeHeatValues(Eigen::MatrixXd h) {
 
@@ -315,6 +285,7 @@ Eigen::MatrixXd  normalizeHeatValues(Eigen::MatrixXd h) {
 int main(int argc, char *argv[])
 {
 
+	// -------- ARG HANDLING ---------
 	if (argc < 2) {
 		std::cout << "usage: argv[0] run_folder variance r_postfix (1 for gui output)" << std::endl;
 		return 0;
@@ -349,6 +320,7 @@ int main(int argc, char *argv[])
 	if (argc >= 6) {
 		if (atoi(argv[5])) meshwrite_only = true;
 	}
+	// --------  END ARG HANDLING ---------
 
 	CGALTriangulation<Kernel> tri;
 
@@ -356,8 +328,9 @@ int main(int argc, char *argv[])
 	CGALTriangulation<Kernel>::Regular *reg=nullptr;
 	CGALTriangulation<Kernel>::Regular regtri;
 
-	int originind;
-	std::vector<int> orbitinds;
+	std::vector<int> innerShell;
+	std::vector<int> middleShell;
+	std::vector<int> outerShell;
 
 	std::string meshNamesFile= run_folder + "meshes.txt";
 	std::vector<std::string> meshNames;
@@ -374,18 +347,9 @@ int main(int argc, char *argv[])
 
 		std::string filepath = run_folder + run_name + ".meshfile";
 
-		if(loadMeshWithOrbitpoints(tri, orbitinds, filepath)) {
-			originind = orbitinds.back();
-			orbitinds.pop_back();
-			std::cout << "Origin ind: " << originind << std::endl;
-			std::cout << "Orbitinds: " << std::endl;
-			for(int i: orbitinds) std::cout << i << " ";
-			std::cout << std::endl;
-		
-		} else {
-			std::cout << "Something went wrong loading the mesh" << std::endl;	
-		}
+		loadMeshWithShellIndices(tri, innerShell, middleShell, outerShell, filepath);
 
+		/*
 		if (regnoise >= 0) {
 			// #################################
 			// Replace by regular triangulation
@@ -433,6 +397,7 @@ int main(int argc, char *argv[])
 				continue;
 			}
 		}
+		*/
 
 		// #########################################
 		std::cout << "METRICS"  << std::endl;
@@ -496,18 +461,22 @@ int main(int argc, char *argv[])
 
 		/* ################## HEAT DIFFUSION ################ */
 
-
-		if (orbitinds.size() < 1) {
-			std::cout << "No orbit points in file, abort" << std::endl;	
+		if (innerShell.size() < 1 || middleShell.size() < 1 || outerShell.size() < 1) {
+			std::cout << "Error with the shell points, abort." << std::endl;	
+			std::cout << "innerShell.size: " << innerShell.size() << std::endl;	
+			std::cout << "middleShell.size: " << middleShell.size() << std::endl;	
+			std::cout << "outerShell.size: " << outerShell.size() << std::endl;	
 			return 0;
 		}
 
 		Eigen::MatrixXd h_fem, h_dec, h, h_decreg;
-		solveHeatProblem(tri, reg, h_fem, h_dec, h_decreg);
+		//solveHeatProblem(tri, reg, h_fem, h_dec, h_decreg);
 		//solveDirichletProblem(tri, h_fem, h_dec);
 
-		std::cout << "...write heat vals to file... " << std::endl;
+		//std::cout << "...write heat vals to file... " << std::endl;
 
+		/*
+		 * TODO: Write values to file
 		std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
 		std::ofstream feil;
 		feil.open(res_out_path);
@@ -524,6 +493,40 @@ int main(int argc, char *argv[])
 		feil.close();
 
 		std::cout << "Finished the feil" << std::endl;
+		*/
+
+		/*
+		// shell indices dbg
+		std::cout << "Number of vertices: " << tri.mesh.number_of_vertices() << std::endl;
+		std::cout << "Inner  shell: " << std::endl;
+		std::cout << "[";
+		for (int idx : innerShell) std::cout << idx << ", ";
+		std::cout << "]" << std::endl;
+		std::cout << "Middle shell: " << std::endl;
+		std::cout << "[";
+		for (int idx : middleShell) std::cout << idx << ", ";
+		std::cout << "]" << std::endl;
+		std::cout << "Outer  shell: " << std::endl;
+		std::cout << "[";
+		for (int idx : outerShell) std::cout << idx << ", ";
+		std::cout << "]" << std::endl;
+		*/
+
+		/*
+		 * dbg boundary values (seems to work)
+		Eigen::MatrixXd bndr_indices(tri.mesh.number_of_vertices(), 1);
+		bndr_indices.setZero();
+		for (int idx: innerShell) {
+			bndr_indices(idx, 0) = 1.;
+		}
+		for (int idx: middleShell) {
+			bndr_indices(idx, 0) = 2.;
+		}
+		for (int idx: outerShell) {
+			bndr_indices(idx, 0) = 3.;
+		}
+		// x = normalizeHeatValues(bndr_indices);
+		*/
 
 		// normalize the heat values:
 		x = normalizeHeatValues(h_dec);
@@ -574,8 +577,7 @@ int main(int argc, char *argv[])
 			int dir = 0;
 
 			Metric metric = minangle;
-			static bool showValues = false;
-			static bool showHeat   = false;
+			static bool showHeat   = true;
 
 			// Add content to the default menu window
 			menu.callback_draw_viewer_menu = [&]()
@@ -586,18 +588,6 @@ int main(int argc, char *argv[])
 				{
 					Metric oldmetric = metric_shown;
 					ImGui::Combo("Metric", (int *)(&metric_shown), "MinAngle\0AMIPS\0Volume\0\0");
-
-					/*
-					if(ImGui::Checkbox("Show Metric Values", &showValues)) {
-						for(int i = 0; i < F.rows(); ++i) {
-							const Eigen::Vector3d FaceCenter( (V(F(i,0), 0)+ V(F(i,1), 0)+ V(F(i,2), 0))/ 3.,  (V(F(i,0), 1)+ V(F(i,1), 1)+ V(F(i,2), 1))/ 3.,  (V(F(i,0), 2)+ V(F(i,1), 2)+ V(F(i,2), 2))/ 3.);
-							viewer.data().add_label(FaceCenter,std::to_string(cell_metrics[metric][faceids[i]]));
-						}
-					} 
-					*/
-					//else {
-					//	viewer.data().clear_labels();	
-					//}
 
 					if (oldmetric != metric_shown){
 						facecolors.resize(faceids.size(), 3);
