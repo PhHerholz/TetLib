@@ -343,8 +343,8 @@ void normalizeSphereBorder(CGALTriangulation<Kernel> &tri) {
 int main(int argc, char *argv[])
 {
 
-	if (argc < 6) {
-		std::cout << "Usage: " << argv[0] << " cellSize ce_ratio aprox_val facet_size bounding_rad" << std::endl;
+	if (argc < 2) {
+		std::cout << "Usage: " << argv[0] << " cellSize silent" << std::endl;
 		return EXIT_FAILURE;
 	}
 
@@ -363,13 +363,13 @@ int main(int argc, char *argv[])
 	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
 	meshingOptions mOptions;
 	mOptions.cell_size              = std::stod(argv[1]);
-	mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
-	mOptions.approx_val             = std::stod(argv[3]);
-	mOptions.facet_size             = std::stod(argv[4]);
-	mOptions.boundingRad            = std::stod(argv[5]);
+	if (atoi(argv[2])) silent = false;
+	//mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
+	//mOptions.approx_val             = std::stod(argv[3]);
+	//mOptions.facet_size             = std::stod(argv[4]);
+	//mOptions.boundingRad            = std::stod(argv[5]);
 
 	double regnoise = -1;
-	silent = false;
 
 	/*
 	if (atoi(argv[5])) mOptions.opt_lloyd   = true;
@@ -396,7 +396,7 @@ int main(int argc, char *argv[])
 
 	FILENAME_base = "DoubleSphere_";
 
-	for (int i=0; i < 5; ++i) FILENAME_base += argv[i+1] + std::string("_");
+	for (int i=0; i < 2; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
 	meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 
