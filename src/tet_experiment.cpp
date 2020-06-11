@@ -39,6 +39,36 @@ typedef Kernel::Point_3 Point;
 
 #include <Eigen/Dense>
 
+void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell)
+{
+	/// retrieve the indices of all points lying on the three spherical shells by their distance to the origin
+
+	innerShell.clear();
+	middleShell.clear();
+	outerShell.clear();
+	double d_i = 1.0;
+	double d_m = 1.5;
+	double d_o = 2.0;
+	
+	// this is the smallest threshold that seems to find all points
+	eps=1e-5;
+	
+	for (auto vh: tri.finite_vertex_handles()) {
+		double dist = sqrt(CGAL::squared_distance(vh->point(), CGAL::ORIGIN));		
+		if (dist < d_i + eps) {
+			// inner shell, includes all points in the hole (if filled by our reg tri insertion)
+			innerShell.push_back(vh->info());
+		}
+		if (fabs(dist - d_m) < eps) {
+			middleShell.push_back(vh->info());	
+		}
+		if (fabs(dist - d_o) < eps) {
+			outerShell.push_back(vh->info());	
+		}
+	}
+
+}
+
 void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
 {
 	const int cntr = tri.centerVertex();
@@ -390,9 +420,11 @@ int main(int argc, char *argv[])
 			for (int i : orbitinds ) std::cout << i << " ";
 			std::cout << std::endl;
 
+			mels = tri.meanEdgeLengthSquared(); 
+
 			std::cout << "-------------------------------------" << std::endl;
 			std::cout << run_name << std::endl;
-			std::cout << "MELS: " << tri.meanEdgeLengthSquared() << std::endl;
+			std::cout << "MELS: " << mels << std::endl;
 			std::cout << "-------------------------------------" << std::endl;
 
 			if (meshwrite_only) {
@@ -447,6 +479,18 @@ int main(int argc, char *argv[])
 		Eigen::MatrixXd cellcolors_amips; 
 		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
 		cellcolors[amips] = cellcolors_amips;
+
+		if (regnoise >= 0) {
+			// write values to file again (reg might have changed them)
+			std::ofstream feil;
+			std::string metrics_out_path = run_folder + run_name + run_postfix + "metrics.csv";
+			feil.open(metrics_out_path);
+			feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << std::endl;
+			for(int i; i < cell_metrics[volume].size(); i++) {
+				feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) << std::endl;
+			}
+			feil.close();
+		}
 
 		std::cout << "Viewer stuff " << std::endl;
 
