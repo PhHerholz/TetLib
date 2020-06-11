@@ -78,9 +78,9 @@ loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &inner
 	retrieveShellIndices(tri, innerShell, middleShell, outerShell);
 }
 
-void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
+void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
 {
-	const int cntr = tri.centerVertex();
+	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
 
 	// Construct A 
@@ -102,13 +102,17 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	A_dec = M - t * L_dec; 
 
 	// solve the constrained problems
-	std::vector<int> boundary_indices = tri.surfaceVertices(); 
-	boundary_indices.push_back(cntr);
+	std::vector<int> constrIndices(outerShell);
+	constrIndices.insert(constrIndices.end(), innerShell.begin(), innerShell.end());
+
+	//constrIndices.push_back(outerShell);
+	//constrIndices.push_back(innerShell);
 
 	Eigen::MatrixXd B(n, 1); B.setZero();
-	Eigen::MatrixXd constrValues(boundary_indices.size(), 1);
+	Eigen::MatrixXd constrValues(constrIndices.size(), 1);
 	constrValues.setZero();
-	constrValues(boundary_indices.size()-1, 0) = 1;
+	// set inner shell values to 1
+	constrValues.block(outerShell.size(), 0, innerShell.size(), 1) = Eigen::MatrixXd::Ones(innerShell.size(),1);
 
 	std::cout << "SHAPES " <<std::endl;
 	std::cout << constrValues.size() << std::endl;
@@ -118,10 +122,10 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	std::cout << "DEC: " << std::endl;
 	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
 
-	solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
+	solveConstrainedSymmetric(A_fem, B, constrIndices, constrValues, h_fem);
 	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
 
-	solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
+	solveConstrainedSymmetric(A_dec, B, constrIndices, constrValues, h_dec);
 	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 
 	if (reg) {	
@@ -144,7 +148,7 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 		A_decreg = M_r - t * L_r;
 		std::cout << "DECreg: " << std::endl;
 		std::cout << A_decreg.rows() << ", " << A_decreg.cols()  << std::endl;
-		solveConstrainedSymmetric(A_decreg, B, boundary_indices, constrValues, h_decreg);
+		solveConstrainedSymmetric(A_decreg, B, constrIndices, constrValues, h_decreg);
 		std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 	}
 }
@@ -304,8 +308,8 @@ int main(int argc, char *argv[])
 		regnoise = std::stod(argv[2]);
 		if (regnoise >= 0) {
 			std::cout << "Regnoise specified" << std::endl;
-			run_postfix += std::to_string(regnoise) + std::string("_"); 
 		}
+		run_postfix += std::to_string(regnoise) + std::string("_"); 
 	}
 
 	if (argc >= 4){
@@ -470,30 +474,36 @@ int main(int argc, char *argv[])
 		}
 
 		Eigen::MatrixXd h_fem, h_dec, h, h_decreg;
-		//solveHeatProblem(tri, reg, h_fem, h_dec, h_decreg);
+		solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
 		//solveDirichletProblem(tri, h_fem, h_dec);
 
-		//std::cout << "...write heat vals to file... " << std::endl;
-
-		/*
-		 * TODO: Write values to file
+		std::cout << "...write heat vals to file... " << std::endl;
 		std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
 		std::ofstream feil;
 		feil.open(res_out_path);
-		feil << "origin index"  << std::endl;
-		feil << originind       << std::endl;
-		feil << "orbit indices" << std::endl;
-		for(int i=0; i < orbitinds.size() - 1; i++) feil << orbitinds[i] << ", ";
-		feil << orbitinds[orbitinds.size()-1] << std::endl;
-		feil << "h_fem" << ", " << "h_dec" << ", " << "h_decreg" << std::endl;
+		feil << "middle shell indices" << std::endl;
+		for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
+		feil << middleShell[middleShell.size()-1] << std::endl;
 
-		for (int r = 0; r < h_fem.rows(); ++r) {
-			feil << h_fem(r) << ", " << h_dec(r) << ", " << h_decreg(r) << std::endl;
+		
+		if (reg) {
+			// include values of the reg laplacian if caluclated
+			feil << "h_fem" << ", " << "h_dec" << ", " << "h_decreg" << std::endl;
+			for (int r = 0; r < h_fem.rows(); ++r) {
+				feil << h_fem(r) << ", " << h_dec(r) << ", " << h_decreg(r) << std::endl;
+			}
+		} else {
+			// include values of the reg laplacian if caluclated
+			feil << "h_fem" << ", " << "h_dec" << std::endl;
+			for (int r = 0; r < h_fem.rows(); ++r) {
+				feil << h_fem(r) << ", " << h_dec(r) << std::endl;
+			}
+		
 		}
+
 		feil.close();
 
 		std::cout << "Finished the feil" << std::endl;
-		*/
 
 		/*
 		// shell indices dbg
