@@ -1425,15 +1425,15 @@ CGALTriangulation<TKernel>::generateRandomRegular(double variance){
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
+CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only){
 
 	CGALTriangulation<TKernel>::Regular reg = generateRandomRegular(variance);
-	replaceMeshByRegular(reg, orbitinds, originind, minVolume, boundary_only);
+	replaceMeshByRegular(reg,innerShell, middleShell, outerShell, minVolume, boundary_only);
 }
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> &orbitinds, int &originind, double minVolume, bool boundary_only){
+CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only){
 
 	// Translate to IndexedTetmesh
     IndexedTetMesh ret;
@@ -1511,7 +1511,55 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 		}
 	}
 
+	std::vector<int> new_inner;
+	for (int i: innerShell) {
+		if (idconversion.find(i) != idconversion.end()) {
+			new_inner.push_back(idconversion[i]);	
+		}
+	}
+	innerShell = new_inner;
 
+	std::vector<int> new_middle;
+	for (int i: middleShell) {
+		if (idconversion.find(i) != idconversion.end()) {
+			new_middle.push_back(idconversion[i]);	
+		}
+	}
+	middleShell = new_middle;
+
+	std::vector<int> new_outer;
+	for (int i: outerShell) {
+		if (idconversion.find(i) != idconversion.end()) {
+			new_outer.push_back(idconversion[i]);	
+		}
+	}
+	outerShell = new_outer;
+	
+	/*
+	for (int i; i < changeind_vecs.size(); ++i) {
+		std::vector<int> new_indices;
+		for (int i: changeind_vecs[i]) {
+			if (idconversion.find(i) != idconversion.end()) {
+				new_indices.push_back(idconversion[i]);	
+			}
+		}
+		changeind_vecs[i] = new_indices;
+	}
+	*/
+	/*
+	for (auto indvec: changeind_vecs) {
+		std::vector<int> new_indices;
+		for (int i: indvec) {
+			if (idconversion.find(i) != idconversion.end()) {
+				new_indices.push_back(idconversion[i]);	
+			}
+		}
+		indvec = new_indices;
+	}
+	*/
+
+	/*
+	 * DEPRECATED, delete soon
 	// convert origin and orbit indices
 	if (originind >= 0) {
 		int new_originind = -1;
@@ -1521,7 +1569,6 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 			std::cout << "origin lost during noising" << std::endl;	
 		}
 	}
-
 	std::vector<int> new_orbitinds;
 	for (int i: orbitinds) {
 		if (idconversion.find(i) != idconversion.end()) {
@@ -1529,4 +1576,5 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 		}
 	}
 	orbitinds = new_orbitinds;
+	*/
 }

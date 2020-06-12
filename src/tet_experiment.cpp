@@ -15,6 +15,7 @@
 #include <imgui/imgui.h>
 #include <iostream>
 #include <random>
+#include <cmath>
 
 #include <unsupported/Eigen/SparseExtra>
 #include <unsupported/Eigen/ArpackSupport>
@@ -94,7 +95,7 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	//tri.massMatrix(M);
 	tri.FEMLaplacian(L_fem);
 
-	std::cout << "Using Mixed DEC" << std::endl;
+	// std::cout << "Using Mixed DEC" << std::endl;
 	// tri.DECLaplacianMixed(L_dec, &M);
 	tri.DECLaplacian(L_dec, &M);
 	const double t = tri.meanEdgeLengthSquared();
@@ -153,7 +154,83 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	}
 }
 
+void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
+{
+	//const int cntr = tri.centerVertex();
+	const int n = tri.mesh.number_of_vertices();
 
+	// Construct A 
+	Eigen::SparseMatrix<double> A_fem, A_dec, A_decreg, L_fem, L_dec, L_r, M, M_r;
+
+	if (reg) {
+		std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
+		tri.DECLaplacianRegular(*reg, L_r, &M_r);
+	}
+
+	//tri.massMatrix(M);
+	tri.FEMLaplacian(L_fem);
+
+	// std::cout << "Using Mixed DEC" << std::endl;
+	// tri.DECLaplacianMixed(L_dec, &M);
+	tri.DECLaplacian(L_dec, &M);
+	const double t = tri.meanEdgeLengthSquared();
+	A_fem =   L_fem;
+	A_dec = - L_dec; 
+
+	// solve the constrained problems
+	std::vector<int> constrIndices(outerShell);
+	constrIndices.insert(constrIndices.end(), innerShell.begin(), innerShell.end());
+
+	//constrIndices.push_back(outerShell);
+	//constrIndices.push_back(innerShell);
+
+	Eigen::MatrixXd B(n, 1); B.setZero();
+	Eigen::MatrixXd constrValues(constrIndices.size(), 1);
+	constrValues.setZero();
+	// set inner shell values to 1
+	constrValues.block(outerShell.size(), 0, innerShell.size(), 1) = Eigen::MatrixXd::Ones(innerShell.size(),1);
+
+	std::cout << "SHAPES " <<std::endl;
+	std::cout << constrValues.size() << std::endl;
+	std::cout << B.rows() << ", " << B.cols()  << std::endl;
+	std::cout << "FEM: " << std::endl;
+	std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
+	std::cout << "DEC: " << std::endl;
+	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
+
+	solveConstrainedSymmetric(A_fem, B, constrIndices, constrValues, h_fem);
+	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
+
+	solveConstrainedSymmetric(A_dec, B, constrIndices, constrValues, h_dec);
+	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
+
+	if (reg) {	
+		
+		std::cout << "------------------- REG L CHECK ------------------" << std::endl;
+		std::cout << "(L_dec - L_r).squaredNorm(): ";
+		std::cout << (L_dec - L_r).squaredNorm() << std::endl;
+		std::cout << "(L_dec - L_fem).squaredNorm(): ";
+		std::cout << (L_dec - L_fem).squaredNorm() << std::endl;
+		/*
+		std::cout << "Samples: L_dec" << std::endl;
+		std::cout << L_dec.block(0,0,100,100) << std::endl;
+		std::cout << "Samples: L_r" << std::endl;
+		std::cout << L_r.block(0,0,100,100) << std::endl;
+		*/
+
+		std::cout << "------------------- /REG L CHECK -----------------" << std::endl;
+
+
+		A_decreg = - L_r;
+		std::cout << "DECreg: " << std::endl;
+		std::cout << A_decreg.rows() << ", " << A_decreg.cols()  << std::endl;
+		solveConstrainedSymmetric(A_decreg, B, constrIndices, constrValues, h_decreg);
+		std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
+	}
+}
+
+
+/*
 void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec)
 {
     const int cntr = tri.centerVertex();
@@ -179,7 +256,6 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fe
     constrValues.setZero();
     constrValues(boundary_indices.size()-1, 0) = 1;
 
-	/*
 	std::cout << "SHAPES " <<std::endl;
 	std::cout << constrValues.size() << std::endl;
 	std::cout << B.rows() << ", " << B.cols()  << std::endl;
@@ -187,7 +263,6 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fe
 	std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
 	std::cout << "DEC: " << std::endl;
 	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
-	*/
 
     solveConstrainedSymmetric(A_fem, B, boundary_indices, constrValues, h_fem);
 	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
@@ -195,6 +270,7 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, Eigen::MatrixXd& h_fe
     solveConstrainedSymmetric(A_dec, B, boundary_indices, constrValues, h_dec);
 	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 }
+*/
 
 
 void screenshot(igl::opengl::glfw::Viewer& viewer, std::string filename) {
@@ -279,10 +355,23 @@ Eigen::MatrixXd  normalizeHeatValues(Eigen::MatrixXd h) {
 
 	Eigen::MatrixXd h_normed;
 	h_normed.resize(h.rows(), 1);
+
+	//lognorm=false;
+	
 	double mi = h.minCoeff();
 	double ma = h.maxCoeff();
+	//ma /= 10.;
 	for(int i = 0; i < h.size(); ++i)
 		h_normed(i) = (h(i) - mi) / (ma - mi);
+
+	/*
+	mi = h.minCoeff();
+	ma = h.maxCoeff();
+	//ma /= 10.;
+	for(int i = 0; i < h.size(); ++i)
+		h_normed(i) = (h_normed(i) - mi) / (ma - mi);
+	*/
+
 	return h_normed;
 }
 
@@ -355,6 +444,43 @@ int main(int argc, char *argv[])
 
 		/*
 		if (regnoise >= 0) {
+			
+			// ###########################################################
+			std::cout << "Noise with Reg Triangulation"      << std::endl;
+			std::cout << "(Noise factor " << regnoise << ")" << std::endl;
+			// ###########################################################
+
+			// set variance st that the std deviation of the reg weights is in the magnitude of mels * rgnoise
+			double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
+
+			std::vector<std::vector<int>> shellIndices;
+			shellIndices.push_back(innerShell);
+			shellIndices.push_back(middleShell);
+			shellIndices.push_back(outerShell);
+
+			int number_of_vertices_old = tri.mesh.number_of_vertices();
+			int number_of_cells_old    = tri.mesh.number_of_cells();
+
+			// new:
+			tri.replaceMeshByRegular(variance, shellIndices, minVolume, boundary_only);
+
+			// update the shellIndices
+			innerShell  = shellIndices[0];
+			middleShell = shellIndices[1];
+			outerShell  = shellIndices[2];
+
+			int number_of_vertices_new = tri.mesh.number_of_vertices();
+			int number_of_cells_new    = tri.mesh.number_of_cells();
+
+			std::cout << "Number of vertices pre: "  << number_of_vertices_old << std::endl;
+			std::cout << "Number of vertices post: " << number_of_vertices_new << std::endl;
+
+			std::cout << "Number of cells pre: "  << number_of_cells_old << std::endl;
+			std::cout << "Number of cells post: " << number_of_cells_new << std::endl;
+		}
+		*/
+
+		if (regnoise >= 0) {
 			// #################################
 			// Replace by regular triangulation
 			// #################################
@@ -363,13 +489,8 @@ int main(int argc, char *argv[])
 			double mels = tri.meanEdgeLengthSquared();
 			double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
 
-			std::cout << "Old orbitinds size: " << orbitinds.size() << std::endl;
-			std::cout << "Old orbitinds: ";
-			for (int i : orbitinds ) std::cout << i << " ";
-			std::cout << std::endl;
-
-
 			std::cout << "Number of Cells pre: " << tri.mesh.number_of_finite_cells() << std::endl;
+
 
 			// generate the regular triangulation
 			regtri = tri.generateRandomRegular(variance);
@@ -377,16 +498,38 @@ int main(int argc, char *argv[])
 
 			std::cout << "Number of Cells reg: " << reg->number_of_finite_cells() << std::endl;
 
+			// list with shellIndices that will be updated
+			/*
+			std::vector<std::vector<int>> shellIndices;
+			shellIndices.push_back(innerShell);
+			shellIndices.push_back(middleShell);
+			shellIndices.push_back(outerShell);
+			*/
+
 			// replace the triangulation by the regular one
-			tri.replaceMeshByRegular(*reg, orbitinds, originind);
+			tri.replaceMeshByRegular(*reg, innerShell, middleShell, outerShell);
+
+			std::cout << "Middle Shell pre: " << std::endl;
+			for (int i =0; i < 100; i++) {
+			std::cout << middleShell[i] << ", ";
+			}
+			std::cout << std::endl;
+
+			// update the shellIndices
+			/*
+			innerShell  = shellIndices[0];
+			middleShell = shellIndices[1];
+			outerShell  = shellIndices[2];
+			*/
+
+			std::cout << "Middle Shell post: " << std::endl;
+			for (int i =0; i < 100; i++) {
+			std::cout << middleShell[i] << ", ";
+			}
+			std::cout << std::endl;
 
 
 			std::cout << "Number of Cells post: " << tri.mesh.number_of_finite_cells() << std::endl;
-
-			std::cout << "New orbitinds size: " << orbitinds.size() << std::endl;
-			std::cout << "New orbitinds: ";
-			for (int i : orbitinds ) std::cout << i << " ";
-			std::cout << std::endl;
 
 			mels = tri.meanEdgeLengthSquared(); 
 
@@ -401,7 +544,6 @@ int main(int argc, char *argv[])
 				continue;
 			}
 		}
-		*/
 
 		// #########################################
 		std::cout << "METRICS"  << std::endl;
@@ -474,7 +616,8 @@ int main(int argc, char *argv[])
 		}
 
 		Eigen::MatrixXd h_fem, h_dec, h, h_decreg;
-		solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
+		//solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
+		solveDirichletProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
 		//solveDirichletProblem(tri, h_fem, h_dec);
 
 		std::cout << "...write heat vals to file... " << std::endl;
@@ -539,7 +682,8 @@ int main(int argc, char *argv[])
 		*/
 
 		// normalize the heat values:
-		x = normalizeHeatValues(h_dec);
+		//x = normalizeHeatValues(h_dec);
+		x = normalizeHeatValues(h_fem);
 
 		if (!silent) {
 			/* ################## SHOW  MESH ####################*/

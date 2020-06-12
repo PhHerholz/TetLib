@@ -126,10 +126,10 @@ public:
 	generateRandomRegular(double variance);
 
 	void
-	replaceMeshByRegular(Regular &reg, std::vector<int> &orbitinds, int &originind, double minVolume=0., bool boundary_only=true);
+	replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0., bool boundary_only=true);
 	
 	void
-	replaceMeshByRegular(double variance, std::vector<int> &orbitinds, int &originind, double minVolume=0., bool boundary_only=true);
+	replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0, bool boundary_only=true);
     
     // find a vertex that is close to the mean of all others
     int
