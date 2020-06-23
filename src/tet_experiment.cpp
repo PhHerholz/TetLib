@@ -26,6 +26,7 @@
 #include "CGALMeshPolyhedron.hpp"
 #include "SolveConstrained.hpp"
 
+#include <unsupported/Eigen/SparseExtra>
 
 #include "tetgen.h"
 #include "IndexedTetMesh.hpp"
@@ -154,7 +155,7 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	}
 }
 
-void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
+void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, std::string laplaceSavePath)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -173,6 +174,13 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	// std::cout << "Using Mixed DEC" << std::endl;
 	// tri.DECLaplacianMixed(L_dec, &M);
 	tri.DECLaplacian(L_dec, &M);
+
+	if (!laplaceSavePath.empty()) {
+		Eigen::saveMarket( L_dec, laplaceSavePath + "_Ldec.mtx");
+		Eigen::saveMarket( L_fem, laplaceSavePath + "_Lfem.mtx");
+	}
+
+
 	const double t = tri.meanEdgeLengthSquared();
 	A_fem =   L_fem;
 	A_dec = - L_dec; 
@@ -409,10 +417,26 @@ int main(int argc, char *argv[])
 	if (argc >= 5) {
 		if (atoi(argv[4])) silent = false;
 	}
+	bool meshwrite = false;
+	if (argc >= 6) {
+		if (atoi(argv[5])) meshwrite = true;
+	}
+	bool saveLaplacians = false;
+	if (argc >= 7) {
+		if (atoi(argv[6])) saveLaplacians = true;
+	}
+	bool output_mel = false;
+	if (argc >= 8) {
+		if (atoi(argv[7])) output_mel = true;
+	}
+
+	/*
 	bool meshwrite_only = false;
 	if (argc >= 6) {
 		if (atoi(argv[5])) meshwrite_only = true;
 	}
+	*/
+	
 	// --------  END ARG HANDLING ---------
 
 	CGALTriangulation<Kernel> tri;
@@ -480,13 +504,13 @@ int main(int argc, char *argv[])
 		}
 		*/
 
+		double mels = tri.meanEdgeLengthSquared();
 		if (regnoise >= 0) {
 			// #################################
 			// Replace by regular triangulation
 			// #################################
 			
 			// set noise ifo mels
-			double mels = tri.meanEdgeLengthSquared();
 			double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
 
 			std::cout << "Number of Cells pre: " << tri.mesh.number_of_finite_cells() << std::endl;
@@ -538,12 +562,28 @@ int main(int argc, char *argv[])
 			std::cout << "MELS: " << mels << std::endl;
 			std::cout << "-------------------------------------" << std::endl;
 
+			if (meshwrite) {
+				std::string outfile = run_folder + run_name  + run_postfix + ".meshfile";
+				tri.write(outfile);
+			}
+			/*
 			if (meshwrite_only) {
 				std::string outfile = run_folder + run_name  + run_postfix + ".meshfile";
 				tri.write(outfile);
 				continue;
 			}
+			*/
 		}
+
+		if (output_mel) {
+			std::ofstream melFile;
+			std::string melFileName =run_folder + "melvalues.txt";
+			melFile.open(melFileName, std::ios_base::app); // append instead of overwrite
+			std::string prfx = run_name + run_postfix;
+			melFile << prfx << ", " << sqrt(mels)  << std::endl; 
+			melFile.close();
+		}
+
 
 		// #########################################
 		std::cout << "METRICS"  << std::endl;
@@ -617,7 +657,11 @@ int main(int argc, char *argv[])
 
 		Eigen::MatrixXd h_fem, h_dec, h, h_decreg;
 		//solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
-		solveDirichletProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
+		std::string laplacesavepath = "";
+		if (saveLaplacians) {
+			laplacesavepath = run_folder + run_name  + run_postfix;
+		}
+		solveDirichletProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, laplacesavepath);
 		//solveDirichletProblem(tri, h_fem, h_dec);
 
 		std::cout << "...write heat vals to file... " << std::endl;

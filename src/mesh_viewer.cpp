@@ -494,58 +494,47 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	// #########################################
-	std::cout << "TEST IGL LAPLACE " << std::endl;
-	// #########################################
+	bool test_igl_laplace = false;
+	if (test_igl_laplace) {
+		// #########################################
+		std::cout << "TEST IGL LAPLACE " << std::endl;
+		// #########################################
 
-    Eigen::SparseMatrix<double> L, M, L_s, M_s, L_fem, M_fem;
+		Eigen::SparseMatrix<double> L, M, L_s, M_s, L_fem, M_fem;
 
-	// CGAL Impl
-    tri.DECLaplacian(L, &M);
-    tri.FEMLaplacian(L_fem);
-    tri.massMatrix(M_fem);
-	
-	// IGL/Eigen Impl
-	IndexedTetMesh indexed = tri.toIndexed();
-	std::cout << "Loaded indexed with " << indexed.vertices.size() << " vertes and " << indexed.tets.size() << " tets." << std::endl;
+		// CGAL Impl
+		tri.DECLaplacian(L, &M);
+		tri.FEMLaplacian(L_fem);
+		tri.massMatrix(M_fem);
+		
+		// IGL/Eigen Impl
+		IndexedTetMesh indexed = tri.toIndexed();
+		std::cout << "Loaded indexed with " << indexed.vertices.size() << " vertes and " << indexed.tets.size() << " tets." << std::endl;
 
 
-	indexed.dualLaplace(L_s, M_s);
+		indexed.dualLaplace(L_s, M_s);
 
-	std::cout << "L.shape: (" << L.rows() << ", " << L.cols() << ")" << std::endl;
-	std::cout << "L_s.shape: (" << L_s.rows() << ", " << L_s.cols() << ")" << std::endl;
+		std::cout << "L.shape: (" << L.rows() << ", " << L.cols() << ")" << std::endl;
+		std::cout << "L_s.shape: (" << L_s.rows() << ", " << L_s.cols() << ")" << std::endl;
 
-	std::cout << "M.shape: (" << M.rows() << ", " << M.cols() << ")" << std::endl;
-	std::cout << "M_s.shape: (" << M_s.rows() << ", " << M_s.cols() << ")" << std::endl;
+		std::cout << "M.shape: (" << M.rows() << ", " << M.cols() << ")" << std::endl;
+		std::cout << "M_s.shape: (" << M_s.rows() << ", " << M_s.cols() << ")" << std::endl;
 
-	std::cout << "norm of difference of DEC operators matrices:" << std::endl;
-	std::cout << (L - L_s).norm() << std::endl;
-	std::cout << "norm of difference of DEC mass matrices:" << std::endl;
-	std::cout << (M - M_s).norm() << std::endl;
+		std::cout << "norm of difference of DEC operators matrices:" << std::endl;
+		std::cout << (L - L_s).norm() << std::endl;
+		std::cout << "norm of difference of DEC mass matrices:" << std::endl;
+		std::cout << (M - M_s).norm() << std::endl;
 
-	std::cout << "SANITY CHECK: COMPARE TO FEM LAPLACE AND MASSMATRIX" << std::endl;
-	std::cout << "norm of difference of operators matrices:" << std::endl;
-	std::cout << (L_fem - L_s).norm() << std::endl;
-	std::cout << "norm of difference of mass matrices:" << std::endl;
-	std::cout << (M_fem - M_s).norm() << std::endl;
+		std::cout << "SANITY CHECK: COMPARE TO FEM LAPLACE AND MASSMATRIX" << std::endl;
+		std::cout << "norm of difference of operators matrices:" << std::endl;
+		std::cout << (L_fem - L_s).norm() << std::endl;
+		std::cout << "norm of difference of mass matrices:" << std::endl;
+		std::cout << (M_fem - M_s).norm() << std::endl;
 
-	std::cout << "L.norm()    : " << L.norm()     << std::endl;
-	std::cout << "L_s.norm()  : " << L_s.norm()   << std::endl;
-	std::cout << "L_fem.norm(): " << L_fem.norm() << std::endl;
-
-	/*
-	std::cout << "L:" << std::endl;
-	std::cout << "CGAL: " << std::endl;
-	std::cout << L << std::endl;
-	std::cout << "igl/eigen: " << std::endl;
-	std::cout << L_s << std::endl;
-
-	std::cout << "M:" << std::endl;
-	std::cout << "CGAL: " << std::endl;
-	std::cout << M << std::endl;
-	std::cout << "igl/eigen: " << std::endl;
-	std::cout << M_s << std::endl;
-	*/
+		std::cout << "L.norm()    : " << L.norm()     << std::endl;
+		std::cout << "L_s.norm()  : " << L_s.norm()   << std::endl;
+		std::cout << "L_fem.norm(): " << L_fem.norm() << std::endl;
+	}
 
 	// #########################################
 	std::cout << "HEAT NORMALS " << std::endl;
@@ -886,7 +875,7 @@ int main(int argc, char *argv[])
 		writeCellGradsToFile(boundaryCellNormals, FILENAME_base + "_boundarygradients_decmixed.csv");
 	}
 
-	bool writeoutsurfacelaplace = true;
+	bool writeoutsurfacelaplace = false;
 	if (writeoutsurfacelaplace) {
 		std::vector<std::tuple<int, Point, Point>> boundaryCellNormals;
 		// FEM

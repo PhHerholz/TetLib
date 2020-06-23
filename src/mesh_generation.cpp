@@ -386,13 +386,6 @@ int main(int argc, char *argv[])
 	double minangle_min_threshold = 0.;
 	double minangle_max_threshold = 70.5;
 	bool invert_minangle_cmap = true;
-	bool addOrbitpointsMEL = false;
-
-	//int min_orbitpoints  	= std::atoi(argv[7]);
-	//int n_flips				= std::atoi(argv[8]);
-	bool addorigin = false;
-	int min_orbitpoints = -1;
-	int n_flips = 0;
 
 	FILENAME_base = "DoubleSphere_";
 
@@ -408,19 +401,7 @@ int main(int argc, char *argv[])
 	double mels = tri.meanEdgeLengthSquared();
 	std::cout << "MEL: " << sqrt(mels) << std::endl;
 
-	if (addOrbitpointsMEL) {
-		// #########################################
-		std::cout << "Add origin and orbitpoints ifo MEL" << std::endl;
-		// #########################################
-		adjustPointsOriginAndOrbit(tri, orbit_indices, orbit_changedby);
-		std::cout << "Added " << orbit_indices.size() - 1 << " orbitpoints (MELMELMEL)" << std::endl;
-
-		origin_ind = orbit_indices[orbit_indices.size()-1];
-		origin_changedby = orbit_changedby[orbit_indices.size()-1];
-		orbit_indices.pop_back();
-		orbit_changedby.pop_back();
-	}
-
+	/*
 	if (regnoise >= 0) {
 		// ###########################################################
 		std::cout << "Noise with Reg Triangulation"      << std::endl;
@@ -430,14 +411,24 @@ int main(int argc, char *argv[])
 		// set variance st that the std deviation of the reg weights is in the magnitude of mels * rgnoise
 		double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
 
-		double origin_ind_pre = origin_ind;
-		std::vector<int> orbit_indices_pre = orbit_indices;
+		//double origin_ind_pre = origin_ind;
+		//std::vector<int> orbit_indices_pre = orbit_indices;
+
+		std::vector<std::vector<int>> shellIndices;
+		shellIndices.push_back(innerShell);
+		shellIndices.push_back(middleShell);
+		shellIndices.push_back(outerShell);
 
 		int number_of_vertices_old = tri.mesh.number_of_vertices();
 		int number_of_cells_old    = tri.mesh.number_of_cells();
 
 		// new:
-		tri.replaceMeshByRegular(variance, orbit_indices, origin_ind, minVolume, boundary_only);
+		tri.replaceMeshByRegular(variance, shellIndices, minVolume, boundary_only);
+
+		// update the shellIndices
+		innerShell  = shellIndices[0];
+		middleShell = shellIndices[1];
+		outerShell  = shellIndices[2];
 
 		int number_of_vertices_new = tri.mesh.number_of_vertices();
 		int number_of_cells_new    = tri.mesh.number_of_cells();
@@ -447,27 +438,9 @@ int main(int argc, char *argv[])
 
 		std::cout << "Number of cells pre: "  << number_of_cells_old << std::endl;
 		std::cout << "Number of cells post: " << number_of_cells_new << std::endl;
-
-		std::cout << "Origin index pre : " << origin_ind_pre << std::endl;
-		std::cout << "Origin index post: " << origin_ind     << std::endl;
-
-		std::cout << "Orbit indices.size pre : " << orbit_indices_pre.size() << std::endl;
-		std::cout << "Orbit indices.size post: " << orbit_indices.size()     << std::endl;
 	}
+*/
 
-	if (addOrbitpointsMEL) {
-		// Write orbitpoints and amount they were moved to a file
-		std::ofstream feil;
-		feil.open("out/" + FILENAME_base + "orbitpoints.csv");
-		feil << "orbit_idx" << ", " << "moved_by" << std::endl;
-		// add origin
-		feil << origin_ind << ", " << origin_changedby << std::endl;
-		// add orbitpoints
-		for (int i=0; i < orbit_indices.size(); ++i) {
-			feil      << orbit_indices[i] << ", " << orbit_changedby[i] << std::endl; 		
-		}
-		feil.close();
-	}
 
 	// #########################################
 	std::cout << "WRITE TO FILE"  << std::endl;
@@ -480,6 +453,12 @@ int main(int argc, char *argv[])
 	mNfile.open(meshNamesFile, std::ios_base::app); // append instead of overwrite
 	mNfile << FILENAME_base << std::endl; 
 	mNfile.close();
+
+	std::string melFile= "out/mel_values.txt";
+	mNfile.open(melFile, std::ios_base::app); // append instead of overwrite
+	mNfile << FILENAME_base << ", " << sqrt(mels)  << std::endl; 
+	mNfile.close();
+
 
 
 	// #########################################
@@ -515,7 +494,6 @@ int main(int argc, char *argv[])
 
 		bool normalize=false;
 		double amips_max = 50;
-
 
 		if (!normalize) {
 			for (int i=0; i < cell_metrics[minangle].size(); i++){
