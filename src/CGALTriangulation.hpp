@@ -10,6 +10,31 @@
 #include <vector>
 #include "IndexedTetMesh.hpp"
 
+
+struct edge {
+	std::array<int,2> v;
+	bool operator ==(edge const& o) const {
+		return ((v[0] == o.v[0]) || (v[0] == o.v[1]))
+			   && ((v[1] == o.v[0]) || (v[1] == o.v[1]));
+	}
+
+	int& operator [](int idx) {
+		return v[idx];
+	}
+
+	const int& operator[](int idx) const {
+		return v[idx];
+	}
+};
+
+namespace std {
+	template<> struct hash<edge> {
+		size_t operator ()(edge const& key) const {
+			return (size_t)key[0] * (size_t)key[1];
+		}
+	};
+}
+
 template<class TKernel>
 class CGALTriangulation
 {
@@ -35,6 +60,8 @@ public:
 	typedef CGAL::Triangulation_data_structure_3<VBR, CBR>  TriangulationDSR;
 	typedef typename CGAL::Regular_triangulation_3<Kernel, TriangulationDSR> Regular;
 	typedef typename Kernel::Weighted_point_3 WPoint;
+
+
     
     // actual data is represented here
     Triangulation mesh;
@@ -66,6 +93,14 @@ public:
     // construct the DEC Laplacian for regular Triangulations, optionally together with the circumcentric mass matrix
     void
     DECLaplacianRegular(CGALTriangulation<TKernel>::Regular reg, Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
+
+    // optimize a laplacian starting from the given weights
+    void
+    DECLaplacianOptimized(Eigen::SparseMatrix<double>& L);
+	void 
+	initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges);
+	void 
+	setLFromW(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, std::vector<edge> edges);
 
 	std::vector<char>
 	surfaceVertexFlag();

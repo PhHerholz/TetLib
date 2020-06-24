@@ -603,7 +603,7 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
     const int nv = mesh.number_of_vertices();
     
     // turn off some costly sanity tests
-    bool dbg = false;
+    bool dbg = true;
     
     std::vector<typename TKernel::Vector_3> vecs(mesh.number_of_vertices());
     
@@ -665,8 +665,6 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
                     
                 triplets.emplace_back(r, s, val);
                 triplets.emplace_back(s, r, val);
-                
-                
 
                 if(dbg)
                 {
@@ -686,13 +684,9 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
                 }
             }
     }
-
-    
-    
    
     L.resize(nv, nv);
     L.setFromTriplets(triplets.begin(), triplets.end());
-
     
     if(dbg)
     {
@@ -712,8 +706,132 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
             LV.row(i).setZero();
         }
         
+		std::cout << "dec laplacian " << std::endl;
         std::cout << "linear precision " << LV.norm() << std::endl;
     }
+}
+
+
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::setLFromW(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, std::vector<edge> edges)
+{
+	std::cout << " generate triplets" << std::endl;
+	std::cout << "edges.size() = " << edges.size() << std::endl;
+	std::cout << "w.size()     = " << w.size() << std::endl;
+    std::vector<Eigen::Triplet<double>> triplets;
+	for (int i=0; i < w.size(); ++i){
+		triplets.emplace_back(edges[i][0], edges[i][1], w[i]);	
+		triplets.emplace_back(edges[i][1], edges[i][0], w[i]);	
+		triplets.emplace_back(edges[i][0], edges[i][0], -w[i]);	
+		triplets.emplace_back(edges[i][1], edges[i][1], -w[i]);	
+	}
+
+	std::cout << " set L from w " << std::endl;
+	L.setZero();
+    L.setFromTriplets(triplets.begin(), triplets.end());
+}
+	
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges)
+{
+	// 1. construct the w vector 
+	edgeindexmap.clear();	// to find index for a given edge
+	edges.clear();			// to find an edge for a given index
+
+	int ne = mesh.number_of_finite_edges();
+	int nv = mesh.number_of_vertices();
+
+	std::cout << "ne " << ne << " nv " << nv << std::endl;
+    w.resize(ne); // weight matrix w
+	w.setZero();
+
+	std::cout << L.outerSize() << std::endl;
+
+	//		a) init with non-zero entries of L and build hashmap at the same time	
+	int w_index=0;
+	for (int k=0; k<L.outerSize(); ++k)
+	{
+		//std::cout << "k: " << k << std::endl;
+		for (Eigen::SparseMatrix<double>::InnerIterator it(L,k); it; ++it)
+		{
+			if (it.row() != it.col()) {
+				edge e{it.row(), it.col()};
+				if (edgeindexmap.find(e) == edgeindexmap.end()) {
+					w(w_index) = L.coeff(it.row(), it.col());
+					edgeindexmap[e] = w_index;
+					edges.push_back(e);
+					w_index++;
+				}
+			}
+		}
+	}
+
+	//		b) check that hashmap has exactly ne
+	std::cout << "Initialized      " << w_index << " entries" << std::endl;
+	std::cout << "number of edges: " << ne << std::endl;
+	std::cout << "hashmap size:    " << edgeindexmap.size() << std::endl;;
+
+	// 2. Construct A Matrix of constraints
+    std::vector<Eigen::Triplet<double>> triplets;
+	//		a) iterate over vertices
+
+
+	for (auto vh: mesh.finite_vertex_handles()){
+		std::vector<Vertex_handle> adjacent_vertices;
+		mesh.finite_adjacent_vertices(vh, std::back_inserter(adjacent_vertices));
+		//	b) iterate over adjacent edges
+		//		fill in constraint values
+		for (Vertex_handle nh: adjacent_vertices) {
+			edge e{vh->info(), nh->info()};
+			int edgeindex = edgeindexmap[e];
+			triplets.emplace_back(3*(vh->info()),   edgeindex, nh->point().x() - vh->point().x());
+			triplets.emplace_back(3*(vh->info())+1, edgeindex, nh->point().y() - vh->point().y());
+			triplets.emplace_back(3*(vh->info())+2, edgeindex, nh->point().z() - vh->point().z());
+		}
+	}
+	std::cout << "finished triplet generation" << std::endl;
+	A.resize(3*nv, ne); // constraint matrix A
+	A.setZero();
+    A.setFromTriplets(triplets.begin(), triplets.end());
+	std::cout << "created A" << std::endl;
+	std::cout << "check linear precision of init values:" << std::endl;
+    Eigen::VectorXd lpvals = A * w; // weight matrix w
+	
+	/*
+	for(int i : surfaceVertices())
+	{
+		lpvals(3*i)   = 0.;
+		lpvals(3*i+1) = 0.;
+		lpvals(3*i+2) = 0.;
+	}
+	*/
+
+	//std::cout << lpvals << std::endl;
+	std::cout << lpvals.norm() << std::endl;
+}
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L)
+{
+	Eigen::VectorXd w;
+	Eigen::SparseMatrix<double> A, L_optimized;
+	std::unordered_map<edge, double> edgeindexmap;
+	std::vector<edge> edges;
+
+	initAWMatrices(L, w, A, edgeindexmap, edges);
+	L_optimized.resize(L.rows(), L.cols());
+	setLFromW(L_optimized, w, edges);
+	std::cout << "Loaded init L again, difference is : " << (L - L_optimized).norm() << std::endl;
+
+	// calc gradient
+	// project gradient TODO: what about the surface values, is projection here correct?
+	
+
 }
 
 template<class TKernel>
@@ -898,8 +1016,6 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
 
             }
     }
-
-    
     
    
     L.resize(nv, nv);
