@@ -828,9 +828,9 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	setLFromW(L_optimized, w, edges);
 	std::cout << "Loaded init L again, difference is : " << (L - L_optimized).norm() << std::endl;
 
+	// TODO: implement 
 	// calc gradient
 	// project gradient TODO: what about the surface values, is projection here correct?
-	
 
 }
 
