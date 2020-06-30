@@ -800,9 +800,6 @@ CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen
 			for (Vertex_handle nh: adjacent_vertices) {
 				edge e{vh->info(), nh->info()};
 				int edgeindex = edgeindexmap[e];
-				//triplets.emplace_back(3*(vh->info()),   edgeindex, nh->point().x() - vh->point().x());
-				//triplets.emplace_back(3*(vh->info())+1, edgeindex, nh->point().y() - vh->point().y());
-				//triplets.emplace_back(3*(vh->info())+2, edgeindex, nh->point().z() - vh->point().z());
 
 				triplets.emplace_back(3*(constrcnt),   edgeindex, nh->point().x() - vh->point().x());
 				triplets.emplace_back(3*(constrcnt)+1, edgeindex, nh->point().y() - vh->point().y());
@@ -887,7 +884,6 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	//std::cout << "finished compute step, start descent" << std::endl;
 	std::cout << "Init minval: " << w.minCoeff() << std::endl;
 
-
 	// backtracking line search parameters
 	double c   = 0.5;
 	double tau = 0.5;
@@ -902,7 +898,7 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		// calc stepsize
 		double m = gradient_projected.norm();
 		int j=0;
-		while ( (w + alpha * gradient_projected).minCoeff() - w.minCoeff()  < 0 ) { // alpha * (c*m)) {
+		while ( (w + alpha * gradient_projected).minCoeff() - w.minCoeff()  < alpha * (c*m) ) { // alpha * (c*m)) {
 			/*
 			std::cout << "-> alpha it " << j++ << std::endl;
 			std::cout << "	 mincoeff: " << (w + alpha * gradient_projected).minCoeff() << std::endl;
@@ -916,6 +912,11 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		w = w + alpha * gradient_projected;
 		std::cout << "it " << s_ind << ", mincoeff: " << w.minCoeff() << std::endl;
 		std::cout << "         (alpha= " << alpha << ")" << std::endl;
+
+		if (alpha < 1e-16) {
+			std::cout << "Alpha < 1e-16, -> break" << std::endl;	
+			break;
+		}
 	}	
 
 	if (debug) {
