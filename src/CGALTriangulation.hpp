@@ -96,11 +96,13 @@ public:
 
     // optimize a laplacian starting from the given weights
     void
-    DECLaplacianOptimized(Eigen::SparseMatrix<double>& L);
+	DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double stepsize, int maxits, bool ignoreBorderConstraints=false);
 	void 
-	initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges);
+	initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges, bool ignoreBorderConstraints=false);
 	void 
 	setLFromW(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, std::vector<edge> edges);
+	Eigen::VectorXd
+	calcLaplaceGradient(Eigen::VectorXd w);
 
 	std::vector<char>
 	surfaceVertexFlag();
