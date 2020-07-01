@@ -814,41 +814,74 @@ CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen
     A.setFromTriplets(triplets.begin(), triplets.end());
 }
 
+
+template<class TKernel>
+double
+CGALTriangulation<TKernel>::calcLaplaceTarget(Eigen::VectorXd w, int targetstyle)
+{
+	if (targetstyle == 0) {
+		// expstyle	
+		double targetvalue = 0;
+		for (int i=0; i < w.size(); ++i) {
+			targetvalue += std::exp(-w(i));
+		}
+		return targetvalue;
+	} else {
+		//Default: - minval
+		return - w.minCoeff();
+	}
+}
+
 template<class TKernel>
 Eigen::VectorXd
-CGALTriangulation<TKernel>::calcLaplaceGradient(Eigen::VectorXd w)
+CGALTriangulation<TKernel>::calcLaplaceGradient(Eigen::VectorXd w, int targetstyle)
 {
 
-	// find min indices
-	std::vector<int> minIndices;
-	double minval  = std::numeric_limits<double>::max();
-	// TODO: epsilon correct, needed?
-	double eps = 1e-8;
-	for (int i=0; i<w.size();++i) {
-		if (fabs(w(i) - minval) < eps) {
-			// equal case
-			minIndices.push_back(i);	
-		} else if (w(i) < minval){
-			minIndices.clear();
-			minIndices.push_back(i);
-			minval = w(i);
+	if (targetstyle == 0) {
+		// expstyle
+		
+		// min value gradient
+		Eigen::VectorXd g(w.size());
+		g.setZero();
+		for (int i=0; i < w.size(); ++i) {
+			g(i) = - std::exp(-w(i));	
 		}
-	}
+		return g;	
 
-	// min value gradient
-	Eigen::VectorXd g(w.size());
-	g.setZero();
-	for (int min_ind: minIndices) {
-		g(min_ind) = 1.;	
+	} else {
+		// DEFAULT: minvalue
+		// find min indices
+		std::vector<int> minIndices;
+		double minval  = std::numeric_limits<double>::max();
+		// TODO: epsilon correct, needed?
+		double eps = 1e-8;
+		for (int i=0; i<w.size();++i) {
+			if (fabs(w(i) - minval) < eps) {
+				// equal case
+				minIndices.push_back(i);	
+			} else if (w(i) < minval){
+				minIndices.clear();
+				minIndices.push_back(i);
+				minval = w(i);
+			}
+		}
+
+		// min value gradient
+		Eigen::VectorXd g(w.size());
+		g.setZero();
+		for (int min_ind: minIndices) {
+			g(min_ind) = 1.;	
+		}
+		return -g;	
 	}
-	return g;	
 }
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double stepsize, int maxits, bool ignoreBorderConstraints)
+CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double stepsize, int maxits)
 {
 	bool debug = true;
+	int targetstyle = 0;
 
 	// 1. INIT A AND w from L
 	Eigen::VectorXd w;
@@ -856,7 +889,7 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	std::unordered_map<edge, double> edgeindexmap;
 	std::vector<edge> edges;
 
-	initAWMatrices(L, w, A, edgeindexmap, edges, ignoreBorderConstraints);
+	initAWMatrices(L, w, A, edgeindexmap, edges, true);
 	std::cout << "initialized A and w" << std::endl;
 
 	if (debug) {
@@ -868,49 +901,49 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	// 2. CALC THE GRADIENT
 	Eigen::VectorXd gradient;
 	// 3. PROJECT THE GRADIENT
-	// TODO: also take care of the norm?
-	// TODO: what about the surface values, is projection here correct?
-	
 	std::cout << "generate solver and start compute step" << std::endl;
     //Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol;
     Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+	std::cout << "..generate AAt Matrix..." << std::endl;
 	Eigen::SparseMatrix<double> AAt = (A * A.transpose());
+	std::cout << "...compute step" << std::endl;
     solver.compute(AAt);
 	std::cout << "Finished compute, success?? : " << (solver.info()==Eigen::Success) << std::endl;
 	if (! solver.info()==Eigen::Success) {
 		std::cout << "...abort" << std::endl;	
 		return;
 	}
+	double targetvalue = calcLaplaceTarget(w, targetstyle); 
 	//std::cout << "finished compute step, start descent" << std::endl;
-	std::cout << "Init minval: " << w.minCoeff() << std::endl;
+	std::cout << "Init targetval: " << targetvalue << std::endl;
 
 	// backtracking line search parameters
 	double c   = 0.5;
 	double tau = 0.5;
 
+	double alpha = 1.; //stepsize;
 	for (int s_ind=0; s_ind<maxits; ++s_ind) {
-		double alpha = stepsize;
 		// calc gradient and project it
-		gradient = calcLaplaceGradient(w);
+		gradient = calcLaplaceGradient(w, targetstyle);
 		Eigen::VectorXd lambda = solver.solve(2*A*w);
 		Eigen::VectorXd gradient_projected = gradient - .5*A.transpose()*lambda;
 
-		// calc stepsize
+		// Backtracking stepsize
 		double m = gradient_projected.norm();
 		int j=0;
-		while ( (w + alpha * gradient_projected).minCoeff() - w.minCoeff()  < alpha * (c*m) ) { // alpha * (c*m)) {
-			/*
-			std::cout << "-> alpha it " << j++ << std::endl;
-			std::cout << "	 mincoeff: " << (w + alpha * gradient_projected).minCoeff() << std::endl;
-			std::cout << "	 mincoeff diff: " << (w + alpha * gradient_projected).minCoeff() - w.minCoeff() << std::endl;
-			std::cout << "	 alpha*c*m " << alpha*c*m << std::endl;
-			*/
+		while ( calcLaplaceTarget(w - alpha * gradient_projected, targetstyle) > targetvalue - alpha * (c*m) ) {
 			alpha = tau * alpha;
 		}
 
 		// update 
-		w = w + alpha * gradient_projected;
-		std::cout << "it " << s_ind << ", mincoeff: " << w.minCoeff() << std::endl;
+		w = w - alpha * gradient_projected;
+		targetvalue = calcLaplaceTarget(w, targetstyle);
+		/*
+		if ( (s_ind+1) % 10 == 0) {
+			alpha = 1./ int((1+s_ind) / 10);
+		}
+		*/
+		std::cout << "it " << s_ind << ", targetval: " << targetvalue << std::endl;
 		std::cout << "         (alpha= " << alpha << ")" << std::endl;
 
 		if (alpha < 1e-16) {

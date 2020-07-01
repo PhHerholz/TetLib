@@ -155,13 +155,13 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	}
 }
 
-void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, std::string laplaceSavePath)
+void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, std::string laplaceSavePath)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
 
 	// Construct A 
-	Eigen::SparseMatrix<double> A_fem, A_dec, A_decreg, L_fem, L_dec, L_r, M, M_r;
+	Eigen::SparseMatrix<double> A_fem, A_dec, A_opt, A_decreg, L_fem, L_dec, L_opt, L_r, M, M_r;
 
 	if (reg) {
 		std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
@@ -175,15 +175,25 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	// tri.DECLaplacianMixed(L_dec, &M);
 	tri.DECLaplacian(L_dec, &M);
 
+	// optimize laplacian
+	L_opt = L_dec;
+	float stepsize = 1e10;
+	int maxits     = 5000;
+	tri.DECLaplacianOptimized(L_opt, stepsize, maxits);
+
+	std::cout << "(L_dec - L_opt).norm() = " << (L_dec - L_opt).norm() << std::endl;
+
 	if (!laplaceSavePath.empty()) {
 		Eigen::saveMarket( L_dec, laplaceSavePath + "_Ldec.mtx");
 		Eigen::saveMarket( L_fem, laplaceSavePath + "_Lfem.mtx");
+		Eigen::saveMarket( L_opt, laplaceSavePath + "_Lopt.mtx");
 	}
 
 
 	const double t = tri.meanEdgeLengthSquared();
 	A_fem =   L_fem;
 	A_dec = - L_dec; 
+	A_opt = - L_opt; 
 
 	// solve the constrained problems
 	std::vector<int> constrIndices(outerShell);
@@ -212,6 +222,9 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	solveConstrainedSymmetric(A_dec, B, constrIndices, constrValues, h_dec);
 	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 
+	solveConstrainedSymmetric(A_opt, B, constrIndices, constrValues, h_opt);
+	std::cout << h_opt.size() << ", " << h_opt.cols() << std::endl;
+
 	if (reg) {	
 		
 		std::cout << "------------------- REG L CHECK ------------------" << std::endl;
@@ -235,6 +248,15 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 		solveConstrainedSymmetric(A_decreg, B, constrIndices, constrValues, h_decreg);
 		std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 	}
+}
+
+void testOptimizedLaplace(CGALTriangulation<Kernel>& tri, double stepsize, int maxits){
+	std::cout << "Test opt Laplace" << std::endl;
+	Eigen::SparseMatrix<double> L_dec, L_optimized, M;
+	tri.DECLaplacian(L_dec, &M);
+	L_optimized = L_dec;
+	std::cout << "run optlaplace" << std::endl;
+	tri.DECLaplacianOptimized(L_optimized, stepsize, maxits);
 }
 
 
@@ -401,6 +423,14 @@ int main(int argc, char *argv[])
 	bool viewer_only=false;
 	std::string run_folder = argv[1];
 
+	//double stepsize			   = std::stod(argv[2]);
+	//int    maxits              = atoi(argv[3]);
+
+	bool meshwrite = false;
+	bool saveLaplacians = false;
+	bool output_mel = false;
+	bool meshwrite_only = false;
+	regnoise = -1;
 	if (argc >= 3) {
 		regnoise = std::stod(argv[2]);
 		if (regnoise >= 0) {
@@ -417,21 +447,17 @@ int main(int argc, char *argv[])
 	if (argc >= 5) {
 		if (atoi(argv[4])) silent = false;
 	}
-	bool meshwrite = false;
 	if (argc >= 6) {
 		if (atoi(argv[5])) meshwrite = true;
 	}
-	bool saveLaplacians = false;
 	if (argc >= 7) {
 		if (atoi(argv[6])) saveLaplacians = true;
 	}
-	bool output_mel = false;
 	if (argc >= 8) {
 		if (atoi(argv[7])) output_mel = true;
 	}
 
 	/*
-	bool meshwrite_only = false;
 	if (argc >= 6) {
 		if (atoi(argv[5])) meshwrite_only = true;
 	}
@@ -655,13 +681,18 @@ int main(int argc, char *argv[])
 			return 0;
 		}
 
-		Eigen::MatrixXd h_fem, h_dec, h, h_decreg;
+		Eigen::MatrixXd h_fem, h_dec, h_opt, h_decreg;
 		//solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
 		std::string laplacesavepath = "";
 		if (saveLaplacians) {
 			laplacesavepath = run_folder + run_name  + run_postfix;
 		}
-		solveDirichletProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, laplacesavepath);
+
+		// TEST OPTIMIZED LAPLACE
+		//testOptimizedLaplace(tri, stepsize, maxits);
+		//return 0;
+
+		solveDirichletProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_opt, h_decreg, laplacesavepath);
 		//solveDirichletProblem(tri, h_fem, h_dec);
 
 		std::cout << "...write heat vals to file... " << std::endl;
@@ -671,59 +702,24 @@ int main(int argc, char *argv[])
 		feil << "middle shell indices" << std::endl;
 		for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
 		feil << middleShell[middleShell.size()-1] << std::endl;
-
 		
 		if (reg) {
 			// include values of the reg laplacian if caluclated
-			feil << "h_fem" << ", " << "h_dec" << ", " << "h_decreg" << std::endl;
+			feil << "h_fem" << "," << "h_dec" << "," << "h_opt"<< "," << "h_decreg" << std::endl;
 			for (int r = 0; r < h_fem.rows(); ++r) {
-				feil << h_fem(r) << ", " << h_dec(r) << ", " << h_decreg(r) << std::endl;
+				feil << h_fem(r) << "," << h_dec(r) << "," << h_opt(r) << "," << h_decreg(r) << std::endl;
 			}
 		} else {
 			// include values of the reg laplacian if caluclated
-			feil << "h_fem" << ", " << "h_dec" << std::endl;
+			feil << "h_fem" << "," << "h_dec" << "," << "h_opt"<< std::endl;
 			for (int r = 0; r < h_fem.rows(); ++r) {
-				feil << h_fem(r) << ", " << h_dec(r) << std::endl;
+				feil << h_fem(r) << "," << h_dec(r) << "," << h_opt(r)<< std::endl;
 			}
 		
 		}
 
 		feil.close();
-
 		std::cout << "Finished the feil" << std::endl;
-
-		/*
-		// shell indices dbg
-		std::cout << "Number of vertices: " << tri.mesh.number_of_vertices() << std::endl;
-		std::cout << "Inner  shell: " << std::endl;
-		std::cout << "[";
-		for (int idx : innerShell) std::cout << idx << ", ";
-		std::cout << "]" << std::endl;
-		std::cout << "Middle shell: " << std::endl;
-		std::cout << "[";
-		for (int idx : middleShell) std::cout << idx << ", ";
-		std::cout << "]" << std::endl;
-		std::cout << "Outer  shell: " << std::endl;
-		std::cout << "[";
-		for (int idx : outerShell) std::cout << idx << ", ";
-		std::cout << "]" << std::endl;
-		*/
-
-		/*
-		 * dbg boundary values (seems to work)
-		Eigen::MatrixXd bndr_indices(tri.mesh.number_of_vertices(), 1);
-		bndr_indices.setZero();
-		for (int idx: innerShell) {
-			bndr_indices(idx, 0) = 1.;
-		}
-		for (int idx: middleShell) {
-			bndr_indices(idx, 0) = 2.;
-		}
-		for (int idx: outerShell) {
-			bndr_indices(idx, 0) = 3.;
-		}
-		// x = normalizeHeatValues(bndr_indices);
-		*/
 
 		// normalize the heat values:
 		//x = normalizeHeatValues(h_dec);
