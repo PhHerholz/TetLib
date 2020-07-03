@@ -177,9 +177,10 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 
 	// optimize laplacian
 	L_opt = L_dec;
-	float stepsize = 1e10;
+	float stepsize = 1;
 	int maxits     = 5000;
-	tri.DECLaplacianOptimized(L_opt, stepsize, maxits);
+	int targetstyle = 1;
+	tri.DECLaplacianOptimized(L_opt, stepsize, maxits, targetstyle);
 
 	std::cout << "(L_dec - L_opt).norm() = " << (L_dec - L_opt).norm() << std::endl;
 
@@ -256,7 +257,7 @@ void testOptimizedLaplace(CGALTriangulation<Kernel>& tri, double stepsize, int m
 	tri.DECLaplacian(L_dec, &M);
 	L_optimized = L_dec;
 	std::cout << "run optlaplace" << std::endl;
-	tri.DECLaplacianOptimized(L_optimized, stepsize, maxits);
+	tri.DECLaplacianOptimized(L_optimized, stepsize, maxits, 0);
 }
 
 
@@ -456,6 +457,7 @@ int main(int argc, char *argv[])
 	if (argc >= 8) {
 		if (atoi(argv[7])) output_mel = true;
 	}
+
 
 	/*
 	if (argc >= 6) {

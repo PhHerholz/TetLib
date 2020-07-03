@@ -96,7 +96,7 @@ public:
 
     // optimize a laplacian starting from the given weights
     void
-	DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double stepsize, int maxits);
+	DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle);
 	void 
 	initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges, bool ignoreBorderConstraints=false);
 	void 

@@ -878,10 +878,9 @@ CGALTriangulation<TKernel>::calcLaplaceGradient(Eigen::VectorXd w, int targetsty
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double stepsize, int maxits)
+CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle)
 {
 	bool debug = true;
-	int targetstyle = 0;
 
 	// 1. INIT A AND w from L
 	Eigen::VectorXd w;
@@ -921,33 +920,38 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	double c   = 0.5;
 	double tau = 0.5;
 
-	double alpha = 1.; //stepsize;
+	double alpha = alpha_init; //stepsize;
 	for (int s_ind=0; s_ind<maxits; ++s_ind) {
 		// calc gradient and project it
 		gradient = calcLaplaceGradient(w, targetstyle);
-		Eigen::VectorXd lambda = solver.solve(2*A*w);
+		Eigen::VectorXd lambda = solver.solve(2*A*gradient);
 		Eigen::VectorXd gradient_projected = gradient - .5*A.transpose()*lambda;
 
-		// Backtracking stepsize
-		double m = gradient_projected.norm();
-		int j=0;
-		while ( calcLaplaceTarget(w - alpha * gradient_projected, targetstyle) > targetvalue - alpha * (c*m) ) {
-			alpha = tau * alpha;
+		if (targetstyle == 0) {
+			alpha = alpha_init;
+			// Backtracking stepsize
+			double m = gradient_projected.norm();
+			int j=0;
+			while ( calcLaplaceTarget(w - alpha * gradient_projected, targetstyle) > targetvalue - alpha * (c*m) ) {
+				alpha = tau * alpha;
+			}
+		} else {
+			if ( (s_ind+1) % 10 == 0) {
+				alpha = 1./ int((1+s_ind) / 10);
+			}
 		}
 
 		// update 
 		w = w - alpha * gradient_projected;
+		double oldtargetvalue = targetvalue;
 		targetvalue = calcLaplaceTarget(w, targetstyle);
-		/*
-		if ( (s_ind+1) % 10 == 0) {
-			alpha = 1./ int((1+s_ind) / 10);
-		}
-		*/
+
 		std::cout << "it " << s_ind << ", targetval: " << targetvalue << std::endl;
 		std::cout << "         (alpha= " << alpha << ")" << std::endl;
 
-		if (alpha < 1e-16) {
-			std::cout << "Alpha < 1e-16, -> break" << std::endl;	
+		if (fabs(targetvalue - oldtargetvalue) < 1e-14) {
+			//std::cout << "Alpha < 1e-16, -> break" << std::endl;	
+			std::cout << "...seems converged" << std::endl;
 			break;
 		}
 	}	
