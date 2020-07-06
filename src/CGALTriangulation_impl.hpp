@@ -136,6 +136,27 @@ CGALTriangulation<TKernel>::surfaceVertices() const
 }
 
 template<class TKernel>
+std::vector<int>
+CGALTriangulation<TKernel>::surfaceVerticesSlow() const
+{
+    std::vector<int> ret;
+	for(auto h : mesh.finite_vertex_handles()) {
+		std::vector<CGALTriangulation<Kernel>::Vertex_handle> adj;
+		mesh.adjacent_vertices(h, std::back_inserter(adj));
+		bool adjtoinf=false;
+		for (auto h: adj) {
+			if (h->info() == -1) {
+				adjtoinf=true;
+			}	
+		}
+		if (adjtoinf) {
+			ret.push_back(h->info());
+		}
+	}
+	return ret;
+}
+
+template<class TKernel>
 double
 CGALTriangulation<TKernel>::meanEdgeLengthSquared()
 {
@@ -736,7 +757,7 @@ CGALTriangulation<TKernel>::setLFromW(Eigen::SparseMatrix<double>& L, Eigen::Vec
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges, bool ignoreBorderConstraints)
+CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges, std::vector<int> &constrVertices, std::vector<int> ignoreIndices)
 {
 	// 1. construct the w vector 
 	edgeindexmap.clear();	// to find index for a given edge
@@ -778,21 +799,18 @@ CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen
 	// 2. Construct A Matrix of constraints
     std::vector<Eigen::Triplet<double>> triplets;
 	//		a) iterate over vertices
-    std::vector<int> surfaceIndices;
-	if (ignoreBorderConstraints) 
-		surfaceIndices = surfaceVertices();
 
 	int constrcnt=0;
 	for (auto vh: mesh.finite_vertex_handles()){
 		bool ignorevertex=false;
-		for (int surfi: surfaceIndices) {
-			if (vh->info() == surfi) {
-				// dont add constraints for surface vertices
+		for (int igni: ignoreIndices) {
+			if (vh->info() == igni) {
+				// dont add constraints for specific vertices (the surface)
 				ignorevertex=true;	
-				// TODO: there is an error, a segfault when ignoring htem
 			}	
 		}
 		if (!ignorevertex){
+			constrVertices.push_back(vh->info());
 			std::vector<Vertex_handle> adjacent_vertices;
 			mesh.finite_adjacent_vertices(vh, std::back_inserter(adjacent_vertices));
 			//	b) iterate over adjacent edges
@@ -878,7 +896,7 @@ CGALTriangulation<TKernel>::calcLaplaceGradient(Eigen::VectorXd w, int targetsty
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle)
+CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> innerSphereIndices)
 {
 	bool debug = true;
 
@@ -888,13 +906,74 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	std::unordered_map<edge, double> edgeindexmap;
 	std::vector<edge> edges;
 
-	initAWMatrices(L, w, A, edgeindexmap, edges, true);
+	std::vector<int> ignoreIndices = surfaceVerticesSlow();
+	for (int i: innerSphereIndices) ignoreIndices.push_back(i);
+
+	std::vector<int> constrIndices;
+	initAWMatrices(L, w, A, edgeindexmap, edges, constrIndices, ignoreIndices);
 	std::cout << "initialized A and w" << std::endl;
+
+	std::cout << "A.rows : " << A.rows() << ", constrIndices.size(): " << constrIndices.size() << std::endl;
 
 	if (debug) {
 		std::cout << "check linear precision of init values:" << std::endl;
 		Eigen::VectorXd lpvals = A * w; // weight matrix w
 		std::cout << lpvals.norm() << std::endl;
+		std::vector<int> problemVertices;
+
+		if (lpvals.norm() >1e-10) {
+			std::cout << "No linear precision. highest value: " << std::endl;
+			std::cout << lpvals.maxCoeff()<< std::endl;
+			std::cout << "dem: ";
+			int cntr = 0;
+			for (int i=0; i < lpvals.size(); ++i) {
+				if (lpvals(i)> 1e-5) {
+					//std::cout << "constr vertex index: " << constrIndices[i/3] << std::endl;
+					problemVertices.push_back(constrIndices[i/3]);
+					++cntr;
+				}
+			}
+			std::cout << std::endl;
+			std::cout << "Das waren " << cntr << std::endl;
+			std::cout << "Innersphere of size " << innerSphereIndices.size() << std::endl;
+		}
+
+		std::vector<int> bndrIndices = surfaceVertices();
+
+		// try to itentify the problematic vertices
+		for(auto h : mesh.finite_vertex_handles()) {
+			bool problem=false;
+			for(int pI : problemVertices) {
+				if (h->info() == pI) {
+					problem = true;
+					break;
+				}	
+			}	
+			if (problem) {
+				std::vector<typename Triangulation::Vertex_handle> adj;
+				mesh.adjacent_vertices(h, back_inserter(adj));
+				bool adjtoinf=false;
+				for (auto h: adj) {
+					if (h->info() == -1) {
+						adjtoinf=true;
+					}	
+				}
+				if (adjtoinf) {
+					std::cout << "Err: should be in surface" << std::endl;	
+					bool isinthere=false;
+					for (auto sI:bndrIndices) {
+						if (h->info() == sI) {
+							isinthere=true;
+						}	
+					}
+					if (isinthere) {
+						std::cout << "...anditis" << std::endl;
+					} else {
+						std::cout << " IT ISNT " << std::endl;
+					}
+				} 
+			}
+		}
 	}
 
 	// 2. CALC THE GRADIENT
