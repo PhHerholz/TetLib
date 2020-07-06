@@ -896,7 +896,7 @@ CGALTriangulation<TKernel>::calcLaplaceGradient(Eigen::VectorXd w, int targetsty
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> innerSphereIndices)
+CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> ignoreIndices)
 {
 	bool debug = true;
 
@@ -906,9 +906,9 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	std::unordered_map<edge, double> edgeindexmap;
 	std::vector<edge> edges;
 
-	std::vector<int> ignoreIndices = surfaceVerticesSlow();
-	for (int i: innerSphereIndices) ignoreIndices.push_back(i);
-
+	if (ignoreIndices.size() == 0) {
+		ignoreIndices = surfaceVerticesSlow();
+	}
 	std::vector<int> constrIndices;
 	initAWMatrices(L, w, A, edgeindexmap, edges, constrIndices, ignoreIndices);
 	std::cout << "initialized A and w" << std::endl;
@@ -934,45 +934,6 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 				}
 			}
 			std::cout << std::endl;
-			std::cout << "Das waren " << cntr << std::endl;
-			std::cout << "Innersphere of size " << innerSphereIndices.size() << std::endl;
-		}
-
-		std::vector<int> bndrIndices = surfaceVertices();
-
-		// try to itentify the problematic vertices
-		for(auto h : mesh.finite_vertex_handles()) {
-			bool problem=false;
-			for(int pI : problemVertices) {
-				if (h->info() == pI) {
-					problem = true;
-					break;
-				}	
-			}	
-			if (problem) {
-				std::vector<typename Triangulation::Vertex_handle> adj;
-				mesh.adjacent_vertices(h, back_inserter(adj));
-				bool adjtoinf=false;
-				for (auto h: adj) {
-					if (h->info() == -1) {
-						adjtoinf=true;
-					}	
-				}
-				if (adjtoinf) {
-					std::cout << "Err: should be in surface" << std::endl;	
-					bool isinthere=false;
-					for (auto sI:bndrIndices) {
-						if (h->info() == sI) {
-							isinthere=true;
-						}	
-					}
-					if (isinthere) {
-						std::cout << "...anditis" << std::endl;
-					} else {
-						std::cout << " IT ISNT " << std::endl;
-					}
-				} 
-			}
 		}
 	}
 
@@ -999,6 +960,8 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	double c   = 0.5;
 	double tau = 0.5;
 
+	int lrupdate = 50;
+
 	double alpha = alpha_init; //stepsize;
 	for (int s_ind=0; s_ind<maxits; ++s_ind) {
 		// calc gradient and project it
@@ -1015,8 +978,8 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 				alpha = tau * alpha;
 			}
 		} else {
-			if ( (s_ind+1) % 10 == 0) {
-				alpha = 1./ int((1+s_ind) / 10);
+			if ( (s_ind+1) % lrupdate == 0) {
+				alpha = 1./ int((1+s_ind) / lrupdate);
 			}
 		}
 
