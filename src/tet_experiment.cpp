@@ -148,7 +148,7 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	}
 }
 
-void checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std::vector<int> innerShell) {
+bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std::vector<int> ignoreIndices) {
     const int nv = tri.mesh.number_of_vertices();
 	// check linear precision
 	Eigen::MatrixXd V(nv, 3);
@@ -158,23 +158,26 @@ void checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 		V(h->info(), 1) = h->point().y();
 		V(h->info(), 2) = h->point().z();
 	}
+
+	if (ignoreIndices.size() == 0) {
+		ignoreIndices = tri.surfaceVerticesSlow();
+	}
 	
 	Eigen::MatrixXd LV = L * V;
-	for(int i : tri.surfaceVerticesSlow())
+	for(int i : ignoreIndices)
 	{
 		LV.row(i).setZero();
 	}
-	/*
-	for(int i : innerShell) 
-	{
-		LV.row(i).setZero();
-	}
-	*/
 
-	std::cout << "linear precision " << LV.norm() << std::endl;
+	if (LV.norm() > 1e-10) {
+		std::cout << "Linear Precision Error !! " << std::endl;
+		std::cout << "LV.norm= " << LV.norm() << std::endl;
+		return false;
+	}
+	return true;
 }
 
-void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, std::string laplaceSavePath)
+bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, std::string laplaceSavePath, int maxits)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -197,10 +200,11 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	// optimize laplacian
 	L_opt = L_dec;
 	float stepsize = 1;
-	int maxits     = 10;
 	int targetstyle = 1;
-	//std::vector<int> emptylist;
-	tri.DECLaplacianOptimized(L_opt, stepsize, maxits, targetstyle, innerShell);
+	std::vector<int> ignoreIndices;
+	ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
+	ignoreIndices.insert(ignoreIndices.end(), outerShell.begin(), outerShell.end());
+	tri.DECLaplacianOptimized(L_opt, stepsize, maxits, targetstyle, ignoreIndices);
 
 	std::cout << "(L_dec - L_opt).norm() = " << (L_dec - L_opt).norm() << std::endl;
 
@@ -219,9 +223,6 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	// solve the constrained problems
 	std::vector<int> constrIndices(outerShell);
 	constrIndices.insert(constrIndices.end(), innerShell.begin(), innerShell.end());
-
-	//constrIndices.push_back(outerShell);
-	//constrIndices.push_back(innerShell);
 
 	Eigen::MatrixXd B(n, 1); B.setZero();
 	Eigen::MatrixXd constrValues(constrIndices.size(), 1);
@@ -249,11 +250,12 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	bool dbg = true;
 	if (dbg) {
 		std::cout << "--------- LP TEST ---------" << std::endl;
-		std::vector<int> ignoreIndices;
 		std::cout << " DEC: " << std::endl;
-		checkLP(tri, L_dec, ignoreIndices);
+		if (!checkLP(tri, L_dec, ignoreIndices)) return false;
+		std::cout << "...done" << std::endl;
 		std::cout << " OPT: " << std::endl;
-		checkLP(tri, L_opt, ignoreIndices);
+		if (!checkLP(tri, L_opt, ignoreIndices)) return false;
+		std::cout << "...done" << std::endl;
 		std::cout << "--------- /LP TEST ---------" << std::endl;
 	}
 
@@ -265,15 +267,7 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 		std::cout << (L_dec - L_r).squaredNorm() << std::endl;
 		std::cout << "(L_dec - L_fem).squaredNorm(): ";
 		std::cout << (L_dec - L_fem).squaredNorm() << std::endl;
-		/*
-		std::cout << "Samples: L_dec" << std::endl;
-		std::cout << L_dec.block(0,0,100,100) << std::endl;
-		std::cout << "Samples: L_r" << std::endl;
-		std::cout << L_r.block(0,0,100,100) << std::endl;
-		*/
-
 		std::cout << "------------------- /REG L CHECK -----------------" << std::endl;
-
 
 		A_decreg = - L_r;
 		std::cout << "DECreg: " << std::endl;
@@ -281,14 +275,17 @@ void solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 		solveConstrainedSymmetric(A_decreg, B, constrIndices, constrValues, h_decreg);
 		std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 	}
+
+	return true;
 }
 
-void testOptimizedLaplace(CGALTriangulation<Kernel>& tri, double stepsize, int maxits, std::vector<int> ignoreIndices){
+void testOptimizedLaplace(CGALTriangulation<Kernel>& tri, double stepsize, int maxits){
 	std::cout << "Test opt Laplace" << std::endl;
 	Eigen::SparseMatrix<double> L_dec, L_optimized, M;
 	tri.DECLaplacian(L_dec, &M);
 	L_optimized = L_dec;
 	std::cout << "run optlaplace" << std::endl;
+	std::vector<int> ignoreIndices;
 	tri.DECLaplacianOptimized(L_optimized, stepsize, maxits, 0, ignoreIndices);
 }
 
@@ -427,7 +424,7 @@ int main(int argc, char *argv[])
 	double regnoise;
 	std::string run_postfix = "";
 	// no gui output
-	bool silent = false;
+	bool silent = true;
 
 	// no calculations, only show mesh
 	bool viewer_only=false;
@@ -454,6 +451,12 @@ int main(int argc, char *argv[])
 	//run_postfix += "_";	
 	}
 
+	int maxits = 500;
+	if (argc >= 5) {
+		maxits = atoi(argv[4]);	
+		run_postfix += std::string("MI") +  std::to_string(maxits) + std::string("_");
+	}
+	/*
 	if (argc >= 5) {
 		if (atoi(argv[4])) silent = false;
 	}
@@ -467,6 +470,7 @@ int main(int argc, char *argv[])
 		if (atoi(argv[7])) output_mel = true;
 	}
 
+	*/
 
 	/*
 	if (argc >= 6) {
@@ -651,7 +655,7 @@ int main(int argc, char *argv[])
 			std::cout << "innerShell.size: " << innerShell.size() << std::endl;	
 			std::cout << "middleShell.size: " << middleShell.size() << std::endl;	
 			std::cout << "outerShell.size: " << outerShell.size() << std::endl;	
-			return 0;
+			return 1;
 		}
 
 		testSurfaceVertices(tri);
@@ -664,10 +668,11 @@ int main(int argc, char *argv[])
 		}
 
 		// TEST OPTIMIZED LAPLACE
-		//testOptimizedLaplace(tri, stepsize, maxits);
-		//return 0;
 
-		solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, h_dec, h_opt, h_decreg, laplacesavepath);
+		if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, h_dec, h_opt, h_decreg, laplacesavepath, maxits)){
+			std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
+			return 1;
+		}
 
 		std::cout << "...write heat vals to file... " << std::endl;
 		std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
@@ -697,7 +702,7 @@ int main(int argc, char *argv[])
 
 		// normalize the heat values:
 		//x = normalizeHeatValues(h_dec);
-		x = normalizeHeatValues(h_fem);
+		x = normalizeHeatValues(h_opt);
 
 		if (!silent) {
 			/* ################## SHOW  MESH ####################*/
@@ -840,22 +845,6 @@ int main(int argc, char *argv[])
 			viewer.core().background_color.setOnes();
 			viewer.callback_key_down = &key_down;
 
-			/*
-			if (!showHeat) {
-				viewer.data().set_colors(facecolors);
-			} else {
-
-			Eigen::VectorXd x2(ids.size());
-			for(int i = 0; i < ids.size(); ++i)
-				x2(i) = x(ids[i]);
-
-
-			Eigen::MatrixXd color;
-			igl::colormap(igl::COLOR_MAP_TYPE_INFERNO, x2, false, color);
-			viewer.data().set_colors(color);
-			
-			}
-			*/
 			viewer.launch();
 		}
 	run_idx++;
