@@ -841,7 +841,14 @@ CGALTriangulation<TKernel>::calcLaplaceTarget(Eigen::VectorXd w, int targetstyle
 		// expstyle	
 		double targetvalue = 0;
 		for (int i=0; i < w.size(); ++i) {
-			targetvalue += std::exp(-w(i));
+			if (w(i) < 0) targetvalue += std::exp(-w(i));
+		}
+		return targetvalue;
+	
+	} else if (targetstyle == 1) {
+		double targetvalue = 0;
+		for (int i=0; i < w.size(); ++i) {
+			if (w(i) < 0) targetvalue -= w(i);
 		}
 		return targetvalue;
 	} else {
@@ -857,15 +864,24 @@ CGALTriangulation<TKernel>::calcLaplaceGradient(Eigen::VectorXd w, int targetsty
 
 	if (targetstyle == 0) {
 		// expstyle
-		
-		// min value gradient
 		Eigen::VectorXd g(w.size());
 		g.setZero();
 		for (int i=0; i < w.size(); ++i) {
-			g(i) = - std::exp(-w(i));	
+			if (w(i) < 0) {
+				g(i) = - std::exp(-w(i));	
+			} 
 		}
 		return g;	
-
+	} else if (targetstyle == 1) {
+		// expstyle
+		Eigen::VectorXd g(w.size());
+		g.setZero();
+		for (int i=0; i < w.size(); ++i) {
+			if (w(i) < 0) {
+				g(i) = -1;	
+			} 
+		}
+		return g;	
 	} else {
 		// DEFAULT: minvalue
 		// find min indices
@@ -989,7 +1005,8 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		targetvalue = calcLaplaceTarget(w, targetstyle);
 
 		std::cout << "it " << s_ind << ", targetval: " << targetvalue << std::endl;
-		std::cout << "         (alpha= " << alpha << ")" << std::endl;
+		std::cout << "         (minval= " << w.minCoeff() << std::endl;
+		std::cout << "         (alpha = " << alpha << ")" << std::endl;
 
 		if (fabs(targetvalue - oldtargetvalue) < 1e-14) {
 			//std::cout << "Alpha < 1e-16, -> break" << std::endl;	
@@ -1777,8 +1794,20 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 		bool addCell = true;
 
 		// check each cell if (!boundary_only):
-		bool checkvolcell = false;
+		bool removeinner  = true;
+		if (removeinner) {
+			bool innerCell=true;
+			for (int i = 0; i < 4; ++i) {
+				auto vh = it->vertex(i);
+				if (std::find(innerShell.begin(), innerShell.end(), vh->info()) == innerShell.end()){
+					innerCell=false;
+					break;
+				}
+			}
+			if (innerCell) addCell=false;
+		}
 
+		bool checkvolcell = false;
 		if (minVolume > 0) {
 			if (!boundary_only){
 				std::cout << "Check all Cells" << std::endl;		

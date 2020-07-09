@@ -199,7 +199,7 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 
 	// optimize laplacian
 	L_opt = L_dec;
-	float stepsize = 1;
+	float stepsize = 0.0001;
 	int targetstyle = 1;
 	std::vector<int> ignoreIndices;
 	ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
@@ -212,6 +212,26 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 		Eigen::saveMarket( L_dec, laplaceSavePath + "_Ldec.mtx");
 		Eigen::saveMarket( L_fem, laplaceSavePath + "_Lfem.mtx");
 		Eigen::saveMarket( L_opt, laplaceSavePath + "_Lopt.mtx");
+
+		std::string res_out_path = laplaceSavePath + "_shellIndices.csv";
+		std::ofstream feil;
+		feil.open(res_out_path);
+
+		feil << "inner shell indices" << std::endl;
+		for(int i=0; i < innerShell.size() - 1; i++) feil << innerShell[i] << ", ";
+		feil << innerShell[innerShell.size()-1] << std::endl;
+
+		feil << "middle shell indices" << std::endl;
+		for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
+		feil << middleShell[middleShell.size()-1] << std::endl;
+
+		feil << "outer shell indices" << std::endl;
+		for(int i=0; i < outerShell.size() - 1; i++) feil << outerShell[i] << ", ";
+		feil << outerShell[outerShell.size()-1] << std::endl;
+
+		feil.close();
+
+
 	}
 
 
@@ -434,7 +454,7 @@ int main(int argc, char *argv[])
 	//int    maxits              = atoi(argv[3]);
 
 	bool meshwrite = false;
-	bool saveLaplacians = false;
+	bool saveLaplacians = true;
 	bool output_mel = false;
 	bool meshwrite_only = false;
 	regnoise = -1;
