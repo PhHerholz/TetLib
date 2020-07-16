@@ -367,6 +367,7 @@ int main(int argc, char *argv[])
 	bool singleSphere = false;
 	if (argc >=4) {
 		if (atoi(argv[3])) singleSphere = true;	
+		mOptions.facet_size             = 0.1; //mOptions.cell_size;
 	}
 	//mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
 	//mOptions.approx_val             = std::stod(argv[3]);

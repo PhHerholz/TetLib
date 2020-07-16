@@ -213,7 +213,7 @@ struct meshingOptions {
 					   cell_radius_edge_ratio(2.),
 					   facet_size(1.),
 					   approx_val(0.02),
-					   boundingRad(3.),
+					   boundingRad(5.),
 					   opt_lloyd(false),
 					   opt_perturb(false), 
 					   opt_exude(false)  {}
@@ -374,8 +374,8 @@ meshSingleSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	// sphere_function (const typename Point& p, double rad)
 
 	// Define functions
-	Function f1( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 0.5,  0., 0., 0. );} );
-	Function f2( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 1.5, 0., 0., 0. );} );
+	Function f1( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 1.,  0., 0., 0. );} );
+	Function f2( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 2., 0., 0., 0. );} );
 	//Function f3( [](double x, double y, double z) -> double{return implicit_sphere_function(x, y, z, 1.5,  0., 0., 0. );} );
 
 	std::cout << "fun test:" << std::endl;
@@ -402,7 +402,7 @@ meshSingleSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	// DOMAIN
 	Mesh_domain domain(function = v_wrapped,  //Function_wrapper(v), //, vps),
 					 // bounding_object = CGAL::Bbox_3(-3, -3, -3, 3, 3, 3), 
-					 bounding_object = typename TKernel::Sphere_3(Point(0., 0.5, 0.), mOptions.boundingRad*mOptions.boundingRad),
+					 bounding_object = typename TKernel::Sphere_3(Point(0., 0., 0.), mOptions.boundingRad*mOptions.boundingRad),
 					 relative_error_bound = 1e-6);
 	//marc:
 	//Mesh_domain domain(Function_wrapper(v,vps), typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.), 1e-6);
