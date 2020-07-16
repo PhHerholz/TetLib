@@ -169,7 +169,7 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 		LV.row(i).setZero();
 	}
 
-	if (LV.norm() > 1e-10) {
+	if (LV.norm() > 1e-7) {
 		std::cout << "Linear Precision Error !! " << std::endl;
 		std::cout << "LV.norm= " << LV.norm() << std::endl;
 		return false;
@@ -177,30 +177,30 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 	return true;
 }
 
-bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, std::string laplaceSavePath, int maxits)
+bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
 
 	// Construct A 
-	Eigen::SparseMatrix<double> A_fem, A_dec, A_opt, A_decreg, L_fem, L_dec, L_opt, L_r, M, M_r;
+	Eigen::SparseMatrix<double> A_fem, A_dec, A_opt, A_decreg, L_fem, L_dec, L_opt, L_r; 
 
 	if (reg) {
 		std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
-		tri.DECLaplacianRegular(*reg, L_r, &M_r);
+		tri.DECLaplacianRegular(*reg, L_r, &M_decreg);
 	}
 
-	//tri.massMatrix(M);
+	tri.massMatrix(M);
 	tri.FEMLaplacian(L_fem);
 
 	// std::cout << "Using Mixed DEC" << std::endl;
 	// tri.DECLaplacianMixed(L_dec, &M);
-	tri.DECLaplacian(L_dec, &M);
+	tri.DECLaplacian(L_dec, &M_dec);
 
 	// optimize laplacian
 	L_opt = L_dec;
-	float stepsize = 0.0001;
-	int targetstyle = 1;
+	float stepsize = 1.; // 0.0001;
+	int targetstyle = 1; // sum of negative off-diagonal entries
 	std::vector<int> ignoreIndices;
 	ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
 	ignoreIndices.insert(ignoreIndices.end(), outerShell.begin(), outerShell.end());
@@ -527,6 +527,13 @@ int main(int argc, char *argv[])
 
 		loadMeshWithShellIndices(tri, innerShell, middleShell, outerShell, filepath);
 
+		bool singleSphere = false;
+		if (run_name.rfind("SingleSphere", 0) == 0) {
+			singleSphere = true;	
+		}
+		std::cout << "..loaded Singlesphere : " << singleSphere << std::endl;
+		std::cout << "Sphere Sizes: " << innerShell.size() << "," << middleShell.size() << "," << outerShell.size() << std::endl;
+
 		double mels = tri.meanEdgeLengthSquared();
 		if (regnoise >= 0) {
 			// #################################
@@ -538,23 +545,15 @@ int main(int argc, char *argv[])
 
 			std::cout << "Number of Cells pre: " << tri.mesh.number_of_finite_cells() << std::endl;
 
-
 			// generate the regular triangulation
 			regtri = tri.generateRandomRegular(variance);
 			reg    = &regtri;
 
 			std::cout << "Number of Cells reg: " << reg->number_of_finite_cells() << std::endl;
 
-			// list with shellIndices that will be updated
-			/*
-			std::vector<std::vector<int>> shellIndices;
-			shellIndices.push_back(innerShell);
-			shellIndices.push_back(middleShell);
-			shellIndices.push_back(outerShell);
-			*/
-
 			// replace the triangulation by the regular one
-			tri.replaceMeshByRegular(*reg, innerShell, middleShell, outerShell);
+			bool removeInner = true;
+			tri.replaceMeshByRegular(*reg, innerShell, middleShell, outerShell, 0., true, removeInner);
 
 			std::cout << "Middle Shell pre: " << std::endl;
 			for (int i =0; i < 100; i++) {
@@ -562,19 +561,11 @@ int main(int argc, char *argv[])
 			}
 			std::cout << std::endl;
 
-			// update the shellIndices
-			/*
-			innerShell  = shellIndices[0];
-			middleShell = shellIndices[1];
-			outerShell  = shellIndices[2];
-			*/
-
 			std::cout << "Middle Shell post: " << std::endl;
 			for (int i =0; i < 100; i++) {
 			std::cout << middleShell[i] << ", ";
 			}
 			std::cout << std::endl;
-
 
 			std::cout << "Number of Cells post: " << tri.mesh.number_of_finite_cells() << std::endl;
 
@@ -589,13 +580,6 @@ int main(int argc, char *argv[])
 				std::string outfile = run_folder + run_name  + run_postfix + ".meshfile";
 				tri.write(outfile);
 			}
-			/*
-			if (meshwrite_only) {
-				std::string outfile = run_folder + run_name  + run_postfix + ".meshfile";
-				tri.write(outfile);
-				continue;
-			}
-			*/
 		}
 
 		if (output_mel) {
@@ -678,10 +662,10 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 
-		testSurfaceVertices(tri);
+		// testSurfaceVertices(tri);
 
 		Eigen::MatrixXd h_fem, h_dec, h_opt, h_decreg;
-		//solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
+		Eigen::SparseMatrix<double> M, M_dec, M_decreg;
 		std::string laplacesavepath = "";
 		if (saveLaplacians) {
 			laplacesavepath = run_folder + run_name  + run_postfix;
@@ -689,10 +673,14 @@ int main(int argc, char *argv[])
 
 		// TEST OPTIMIZED LAPLACE
 
-		if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, h_dec, h_opt, h_decreg, laplacesavepath, maxits)){
+		//bool dirichlet = true;
+		if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_decreg, M_decreg, laplacesavepath, maxits)){
 			std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
 			return 1;
 		}
+		//solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
+
+		bool includeMass = false;
 
 		std::cout << "...write heat vals to file... " << std::endl;
 		std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
@@ -701,24 +689,26 @@ int main(int argc, char *argv[])
 		feil << "middle shell indices" << std::endl;
 		for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
 		feil << middleShell[middleShell.size()-1] << std::endl;
-		
-		if (reg) {
-			// include values of the reg laplacian if caluclated
-			feil << "h_fem" << "," << "h_dec" << "," << "h_opt"<< "," << "h_decreg" << std::endl;
-			for (int r = 0; r < h_fem.rows(); ++r) {
-				feil << h_fem(r) << "," << h_dec(r) << "," << h_opt(r) << "," << h_decreg(r) << std::endl;
-			}
-		} else {
-			// include values of the reg laplacian if caluclated
-			feil << "h_fem" << "," << "h_dec" << "," << "h_opt"<< std::endl;
-			for (int r = 0; r < h_fem.rows(); ++r) {
-				feil << h_fem(r) << "," << h_dec(r) << "," << h_opt(r)<< std::endl;
-			}
-		
+		// -----------------------
+		feil << "h_fem" << "," << "h_dec" << "," << "h_opt";
+		if (reg) feil << "," << "h_decreg";
+		if (includeMass){
+			feil << "," << "M" << "," << "M_dec";
+			if (reg) feil << "," << "M_decreg";
 		}
-
+		feil << std::endl;
+		for (int r = 0; r < h_fem.rows(); ++r) {
+			feil << h_fem(r) << "," << h_dec(r) << "," << h_opt(r);
+			if (reg) feil << "," << h_decreg(r);
+			if (includeMass) {
+				feil << "," << M.coeff(r,r) << "," << M_dec.coeff(r,r);
+				if (reg) feil << "," << M_decreg.coeff(r,r);
+			}
+			feil << std::endl;
+		}
 		feil.close();
 		std::cout << "Finished the feil" << std::endl;
+		// -----------------------
 
 		// normalize the heat values:
 		//x = normalizeHeatValues(h_dec);

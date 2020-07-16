@@ -18,11 +18,11 @@ sphere_function (const typename TKernel::Point& p);
 
 template<class TKernel>
 void
-meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, bool use_torus = false);
+meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions);
 
 template<class TKernel2, class TKernel>
 void 
-meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, bool use_torus = false);
+meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions);
 
 
 #include "CGALMeshPolyhedron_impl.h"

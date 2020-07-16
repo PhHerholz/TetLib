@@ -102,7 +102,7 @@ public:
     void
 	DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> ignoreIndices);
 	void 
-	initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges, std::vector<int> &constrVertices, std::vector<int> ignoreIndices);
+	initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges, std::vector<int> &constrVertices, std::vector<int> ignoreIndices, bool fixBoundaryEdges);
 	void 
 	setLFromW(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, std::vector<edge> edges);
 	Eigen::VectorXd
@@ -169,10 +169,10 @@ public:
 	generateRandomRegular(double variance);
 
 	void
-	replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0., bool boundary_only=true);
+	replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0., bool boundary_only=true, bool removeInner=true);
 	
 	void
-	replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0, bool boundary_only=true);
+	replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0, bool boundary_only=true, bool removeInner=true);
     
     // find a vertex that is close to the mean of all others
     int

@@ -360,24 +360,20 @@ int main(int argc, char *argv[])
 
 	bool silent=true;
 
-	// tetlib CELLSIZE CERATIO LLOYD PERTURB EXUDE NFLIPS
+	// tetlib CELLSIZE  SILENT SINGLESPHERE
 	meshingOptions mOptions;
 	mOptions.cell_size              = std::stod(argv[1]);
 	if (atoi(argv[2])) silent = false;
+	bool singleSphere = false;
+	if (argc >=4) {
+		if (atoi(argv[3])) singleSphere = true;	
+	}
 	//mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
 	//mOptions.approx_val             = std::stod(argv[3]);
 	//mOptions.facet_size             = std::stod(argv[4]);
 	//mOptions.boundingRad            = std::stod(argv[5]);
 
 	double regnoise = -1;
-
-	/*
-	if (atoi(argv[5])) mOptions.opt_lloyd   = true;
-	if (atoi(argv[6])) mOptions.opt_perturb = true;
-	if (atoi(argv[7])) mOptions.opt_exude   = true;
-	regnoise = std::stod(argv[8]);
-	if (atoi(argv[9])) silent = false;
-	*/
 
 	double minVolume     = 0.;
 	bool   boundary_only = true;
@@ -387,11 +383,18 @@ int main(int argc, char *argv[])
 	double minangle_max_threshold = 70.5;
 	bool invert_minangle_cmap = true;
 
-	FILENAME_base = "DoubleSphere_";
+	if (!singleSphere) {
+		FILENAME_base = "DoubleSphere_";
+		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
+	} else {
+		FILENAME_base = "SingleSphere_";
+		//meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
+		meshSingleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
+		//meshSphere(tri, mOptions);
+			
+	}
 
 	for (int i=0; i < 1; ++i) FILENAME_base += argv[i+1] + std::string("_");
-
-	meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 
 	int origin_ind = -1;
 	double origin_changedby=-1;
@@ -401,46 +404,18 @@ int main(int argc, char *argv[])
 	double mels = tri.meanEdgeLengthSquared();
 	std::cout << "MEL: " << sqrt(mels) << std::endl;
 
-	/*
-	if (regnoise >= 0) {
-		// ###########################################################
-		std::cout << "Noise with Reg Triangulation"      << std::endl;
-		std::cout << "(Noise factor " << regnoise << ")" << std::endl;
-		// ###########################################################
+	if (singleSphere) {
+		// #########################################
+		std::cout << "Add origin and orbitpoints ifo MEL" << std::endl;
+		// #########################################
+		adjustPointsOriginAndOrbit(tri, orbit_indices, orbit_changedby, 1.0);
+		std::cout << "Added " << orbit_indices.size() - 1 << " orbitpoints (MELMELMEL)" << std::endl;
 
-		// set variance st that the std deviation of the reg weights is in the magnitude of mels * rgnoise
-		double variance = mels * regnoise;  // (mels*mels*regnoise) * (mels*mels*regnoise);
-
-		//double origin_ind_pre = origin_ind;
-		//std::vector<int> orbit_indices_pre = orbit_indices;
-
-		std::vector<std::vector<int>> shellIndices;
-		shellIndices.push_back(innerShell);
-		shellIndices.push_back(middleShell);
-		shellIndices.push_back(outerShell);
-
-		int number_of_vertices_old = tri.mesh.number_of_vertices();
-		int number_of_cells_old    = tri.mesh.number_of_cells();
-
-		// new:
-		tri.replaceMeshByRegular(variance, shellIndices, minVolume, boundary_only);
-
-		// update the shellIndices
-		innerShell  = shellIndices[0];
-		middleShell = shellIndices[1];
-		outerShell  = shellIndices[2];
-
-		int number_of_vertices_new = tri.mesh.number_of_vertices();
-		int number_of_cells_new    = tri.mesh.number_of_cells();
-
-		std::cout << "Number of vertices pre: "  << number_of_vertices_old << std::endl;
-		std::cout << "Number of vertices post: " << number_of_vertices_new << std::endl;
-
-		std::cout << "Number of cells pre: "  << number_of_cells_old << std::endl;
-		std::cout << "Number of cells post: " << number_of_cells_new << std::endl;
+		origin_ind = orbit_indices[orbit_indices.size()-1];
+		origin_changedby = orbit_changedby[orbit_indices.size()-1];
+		orbit_indices.pop_back();
+		orbit_changedby.pop_back();
 	}
-*/
-
 
 	// #########################################
 	std::cout << "WRITE TO FILE"  << std::endl;

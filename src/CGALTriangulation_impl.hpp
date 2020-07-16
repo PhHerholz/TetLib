@@ -757,7 +757,7 @@ CGALTriangulation<TKernel>::setLFromW(Eigen::SparseMatrix<double>& L, Eigen::Vec
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges, std::vector<int> &constrVertices, std::vector<int> ignoreIndices)
+CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen::VectorXd& w, Eigen::SparseMatrix<double>& A, std::unordered_map<edge, double>& edgeindexmap, std::vector<edge>& edges, std::vector<int> &constrVertices, std::vector<int> ignoreIndices, bool fixBoundaryEdges)
 {
 	// 1. construct the w vector 
 	edgeindexmap.clear();	// to find index for a given edge
@@ -792,14 +792,11 @@ CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen
 	}
 
 	//		b) check that hashmap has exactly ne
-	//std::cout << "Initialized      " << w_index << " entries" << std::endl;
-	//std::cout << "number of edges: " << ne << std::endl;
-	//std::cout << "hashmap size:    " << edgeindexmap.size() << std::endl;;
 
 	// 2. Construct A Matrix of constraints
     std::vector<Eigen::Triplet<double>> triplets;
 	//		a) iterate over vertices
-
+	
 	int constrcnt=0;
 	for (auto vh: mesh.finite_vertex_handles()){
 		bool ignorevertex=false;
@@ -824,10 +821,29 @@ CGALTriangulation<TKernel>::initAWMatrices(Eigen::SparseMatrix<double>& L, Eigen
 				triplets.emplace_back(3*(constrcnt)+2, edgeindex, nh->point().z() - vh->point().z());
 			}
 			++constrcnt;
-		}
+		} 
 	}
+
+	int beccnt = 0;
+	if (fixBoundaryEdges) {
+		for (edge e: edges) {
+			bool boundaryEdge = false;
+			for (int igni: ignoreIndices) {
+				if (e[0] == igni || e[1] == igni) {
+					boundaryEdge = true;	
+					break;
+				}	
+			}
+			if (boundaryEdge) {
+				int edgeindex = edgeindexmap[e];
+				triplets.emplace_back(3*constrcnt+beccnt, edgeindex, 1);
+				++beccnt;
+			}
+		}	
+	}
+
 	std::cout << constrcnt << " constraints, " << nv << " vertices." << std::endl;
-	A.resize(3*constrcnt, ne); // constraint matrix A
+	A.resize(3*constrcnt + beccnt, ne); // constraint matrix A
 	A.setZero();
     A.setFromTriplets(triplets.begin(), triplets.end());
 }
@@ -915,6 +931,7 @@ void
 CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> ignoreIndices)
 {
 	bool debug = true;
+	bool fixBoundaryEdges = true;
 
 	// 1. INIT A AND w from L
 	Eigen::VectorXd w;
@@ -926,7 +943,7 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		ignoreIndices = surfaceVerticesSlow();
 	}
 	std::vector<int> constrIndices;
-	initAWMatrices(L, w, A, edgeindexmap, edges, constrIndices, ignoreIndices);
+	initAWMatrices(L, w, A, edgeindexmap, edges, constrIndices, ignoreIndices, fixBoundaryEdges);
 	std::cout << "initialized A and w" << std::endl;
 
 	std::cout << "A.rows : " << A.rows() << ", constrIndices.size(): " << constrIndices.size() << std::endl;
@@ -985,6 +1002,8 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		Eigen::VectorXd lambda = solver.solve(2*A*gradient);
 		Eigen::VectorXd gradient_projected = gradient - .5*A.transpose()*lambda;
 
+		std::cout << "(A * g_p).norm(): " << (A * gradient_projected).norm() << std::endl;
+
 		if (targetstyle == 0) {
 			alpha = alpha_init;
 			// Backtracking stepsize
@@ -1019,12 +1038,23 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		std::cout << "check linear precision of output values:" << std::endl;
 		Eigen::VectorXd lpvals = A * w; // weight matrix w
 		std::cout << lpvals.norm() << std::endl;
+
 	}
 
 	// reload the optimized matrix and insert it in the result matrix L
 	Eigen::SparseMatrix<double> L_optimized;
 	L_optimized.resize(L.rows(), L.cols());
 	setLFromW(L_optimized, w, edges);
+
+	if (debug && fixBoundaryEdges) {
+		Eigen::SparseMatrix<double> Ldiff = L_optimized - L;
+		double ignoresum=0;
+		for (int i: ignoreIndices) {
+			ignoresum += Ldiff.row(i).norm();	
+		}
+		std::cout << "Ignoresum: " << ignoresum << std::endl;
+	}
+
 	L = L_optimized;
 }
 
@@ -1759,15 +1789,15 @@ CGALTriangulation<TKernel>::generateRandomRegular(double variance){
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only){
+CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only, bool removeInner){
 
 	CGALTriangulation<TKernel>::Regular reg = generateRandomRegular(variance);
-	replaceMeshByRegular(reg,innerShell, middleShell, outerShell, minVolume, boundary_only);
+	replaceMeshByRegular(reg,innerShell, middleShell, outerShell, minVolume, boundary_only, removeInner);
 }
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only){
+CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only, bool removeInner){
 
 	// Translate to IndexedTetmesh
     IndexedTetMesh ret;
@@ -1794,8 +1824,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 		bool addCell = true;
 
 		// check each cell if (!boundary_only):
-		bool removeinner  = true;
-		if (removeinner) {
+		if (removeInner) {
 			bool innerCell=true;
 			for (int i = 0; i < 4; ++i) {
 				auto vh = it->vertex(i);
