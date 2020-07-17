@@ -41,7 +41,7 @@ typedef Kernel::Point_3 Point;
 
 #include <Eigen/Dense>
 
-void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell)
+void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, int &originind )
 {
 	/// retrieve the indices of all points lying on the three spherical shells by their distance to the origin
 
@@ -54,11 +54,19 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 	double d_o = 2.0;
 	
 	// this is the smallest threshold that seems to find all points
-	double eps=1e-5;
+	// (for doublesphere it seemed to be 1e-5, for single 1e-4
+	double eps=1e-4;
 	
 	for (auto vh: tri.mesh.finite_vertex_handles()) {
 		double dist = sqrt(CGAL::squared_distance(vh->point(), Point(CGAL::ORIGIN)));		
-		if (dist < d_i + eps) {
+
+		if (dist < eps) {
+			originind = vh->info();	
+			std::cout << "NEW ORIGIN: " << vh->point() << std::endl;
+			std::cout << "Origin ind: " << originind << std::endl;
+		}
+
+		if (fabs(dist - d_i) < eps) {
 			// inner shell, includes all points in the hole (if filled by our reg tri insertion)
 			innerShell.push_back(vh->info());
 		}
@@ -73,11 +81,11 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 }
 
 void 
-loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, std::string filepath)
+loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, std::string filepath, int &originind)
 {
 	// load Triangulation from file and read orbitpoints
 	tri.read(filepath);
-	retrieveShellIndices(tri, innerShell, middleShell, outerShell);
+	retrieveShellIndices(tri, innerShell, middleShell, outerShell, originind);
 }
 
 void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
@@ -177,7 +185,7 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 	return true;
 }
 
-bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits)
+bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool singleSphere)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -202,8 +210,44 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	float stepsize = 1.; // 0.0001;
 	int targetstyle = 1; // sum of negative off-diagonal entries
 	std::vector<int> ignoreIndices;
-	ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
+
+	/*
+	if (singleSphere) {	
+		ignoreIndices = tri.surfaceVerticesSlow();
+		std::cout << "ignoreInd.size() : " << ignoreIndices.size() << std::endl;
+		std::cout << "outerShell.size(): " << outerShell.size() << std::endl;
+		int outindex = -1;
+		for (int i: ignoreIndices) {
+			bool drin = false;
+			for (int j: outerShell) {
+				if (i == j) {
+					drin=true;
+					break;
+				}
+			}	
+			if (!drin) {
+				std::cout << "Ignoreindex not in outershell: " << i << std::endl;
+				outindex = i;
+			}
+		}
+		
+		for (auto vh: tri.mesh.finite_vertex_handles()) {
+			if (vh->info() == outindex) {
+				std::cout << "outpoint: " << vh->point() << std::endl;	
+			}
+		}
+		
+
+	} else {
+		ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
+		ignoreIndices.insert(ignoreIndices.end(), outerShell.begin(), outerShell.end());
+	}
+	*/
+
 	ignoreIndices.insert(ignoreIndices.end(), outerShell.begin(), outerShell.end());
+	if (!singleSphere) {
+		ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
+	}
 	tri.DECLaplacianOptimized(L_opt, stepsize, maxits, targetstyle, ignoreIndices);
 
 	std::cout << "(L_dec - L_opt).norm() = " << (L_dec - L_opt).norm() << std::endl;
@@ -228,10 +272,7 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 		feil << "outer shell indices" << std::endl;
 		for(int i=0; i < outerShell.size() - 1; i++) feil << outerShell[i] << ", ";
 		feil << outerShell[outerShell.size()-1] << std::endl;
-
 		feil.close();
-
-
 	}
 
 
@@ -243,6 +284,17 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	// solve the constrained problems
 	std::vector<int> constrIndices(outerShell);
 	constrIndices.insert(constrIndices.end(), innerShell.begin(), innerShell.end());
+
+	/*
+	std::cout << "constrIndices: [";
+	for (int constind: constrIndices) std::cout << constind << ", ";
+	std::cout << "]" << std::endl;
+
+	std::cout << "point 4170: ";
+	for (auto vh: tri.mesh.finite_vertex_handles()) {
+		if (int(vh->info()) == 4170) std::cout << vh->point() << std::endl;
+	}
+	*/
 
 	Eigen::MatrixXd B(n, 1); B.setZero();
 	Eigen::MatrixXd constrValues(constrIndices.size(), 1);
@@ -258,17 +310,31 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	std::cout << "DEC: " << std::endl;
 	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
 
+	std::cout << "n: " << n << std::endl;
+	std::cout << "outerShell.size(): " << outerShell.size() << std::endl;
+	std::cout << "innerShell.size(): " << innerShell.size() << std::endl;
+	std::cout << "constrValues.size(): " << constrValues.size() << std::endl;
+
+	std::cout << "...solve fem" << std::endl;
 	solveConstrainedSymmetric(A_fem, B, constrIndices, constrValues, h_fem);
 	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
 
+	std::cout << "...solve dec" << std::endl;
 	solveConstrainedSymmetric(A_dec, B, constrIndices, constrValues, h_dec);
 	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 
+	std::cout << "...solve opt" << std::endl;
 	solveConstrainedSymmetric(A_opt, B, constrIndices, constrValues, h_opt);
 	std::cout << h_opt.size() << ", " << h_opt.cols() << std::endl;
 
 	bool dbg = true;
 	if (dbg) {
+		std::cout << "--------- Shell Index sizes: --------" << std::endl;
+		std::cout << "Ignore Indices: " << ignoreIndices.size() << std::endl;
+		std::cout << "innerShell    : " << innerShell.size() << std::endl;
+		std::cout << "middleShell    : " << middleShell.size() << std::endl;
+		std::cout << "outerShell    : " << outerShell.size() << std::endl;
+
 		std::cout << "--------- LP TEST ---------" << std::endl;
 		std::cout << " DEC: " << std::endl;
 		if (!checkLP(tri, L_dec, ignoreIndices)) return false;
@@ -476,10 +542,11 @@ int main(int argc, char *argv[])
 		maxits = atoi(argv[4]);	
 		run_postfix += std::string("MI") +  std::to_string(maxits) + std::string("_");
 	}
-	/*
-	if (argc >= 5) {
-		if (atoi(argv[4])) silent = false;
+
+	if (argc >= 6) {
+		if (atoi(argv[5])) silent = false;
 	}
+	/*
 	if (argc >= 6) {
 		if (atoi(argv[5])) meshwrite = true;
 	}
@@ -525,11 +592,17 @@ int main(int argc, char *argv[])
 
 		std::string filepath = run_folder + run_name + ".meshfile";
 
-		loadMeshWithShellIndices(tri, innerShell, middleShell, outerShell, filepath);
+		int originind = -1;
+		loadMeshWithShellIndices(tri, innerShell, middleShell, outerShell, filepath, originind);
 
 		bool singleSphere = false;
 		if (run_name.rfind("SingleSphere", 0) == 0) {
 			singleSphere = true;	
+
+			middleShell = innerShell;
+			innerShell.clear();
+			innerShell.push_back(originind);
+
 		}
 		std::cout << "..loaded Singlesphere : " << singleSphere << std::endl;
 		std::cout << "Sphere Sizes: " << innerShell.size() << "," << middleShell.size() << "," << outerShell.size() << std::endl;
@@ -550,22 +623,31 @@ int main(int argc, char *argv[])
 			reg    = &regtri;
 
 			std::cout << "Number of Cells reg: " << reg->number_of_finite_cells() << std::endl;
-
+			std::cout << "spheresizes pre: " << innerShell.size() << ", " << middleShell.size() << ", " << outerShell.size() << std::endl;
 			// replace the triangulation by the regular one
-			bool removeInner = true;
+			bool removeInner = !singleSphere;
 			tri.replaceMeshByRegular(*reg, innerShell, middleShell, outerShell, 0., true, removeInner);
 
-			std::cout << "Middle Shell pre: " << std::endl;
-			for (int i =0; i < 100; i++) {
-			std::cout << middleShell[i] << ", ";
-			}
-			std::cout << std::endl;
+			std::cout << "spheresizes post: " << innerShell.size() << ", " << middleShell.size() << ", " << outerShell.size() << std::endl;
 
-			std::cout << "Middle Shell post: " << std::endl;
-			for (int i =0; i < 100; i++) {
-			std::cout << middleShell[i] << ", ";
+			/*
+			if (middleShell.size() > 0) {
+				std::cout << "Middle Shell pre: " << std::endl;
+				std::cout << "(size: " << middleShell.size() << ")" << std::endl;
+				for (int i=0; i < 100; i++) {
+					if ( i > (middleShell.size() - 1)) break;
+					std::cout << middleShell[i] << ", ";
+				}
+				std::cout << std::endl;
+
+				std::cout << "Middle Shell post: " << std::endl;
+				for (int i =0; i < 100; i++) {
+					if ( i > (middleShell.size() - 1)) break;
+					std::cout << middleShell[i] << ", ";
+				}
+				std::cout << std::endl;
 			}
-			std::cout << std::endl;
+			*/
 
 			std::cout << "Number of Cells post: " << tri.mesh.number_of_finite_cells() << std::endl;
 
@@ -653,7 +735,26 @@ int main(int argc, char *argv[])
 		std::cout << "Viewer stuff " << std::endl;
 
 		/* ################## HEAT DIFFUSION ################ */
+		
+		/*
+		std::cout << "Outer Shell: [";
+		for (int i: outerShell) std::cout << i << ", ";
+		std::cout << std::endl;
+		*/
 
+		/*
+		if (singleSphere) {
+			
+			if (innerShell.size() < 1 || outerShell.size() < 1) {
+				std::cout << "Error with the shell points, abort." << std::endl;	
+				std::cout << "innerShell.size: " << innerShell.size() << std::endl;	
+				std::cout << "middleShell.size: " << middleShell.size() << std::endl;	
+				std::cout << "outerShell.size: " << outerShell.size() << std::endl;	
+				return 1;
+			}
+		
+		} 
+		*/
 		if (innerShell.size() < 1 || middleShell.size() < 1 || outerShell.size() < 1) {
 			std::cout << "Error with the shell points, abort." << std::endl;	
 			std::cout << "innerShell.size: " << innerShell.size() << std::endl;	
@@ -674,7 +775,7 @@ int main(int argc, char *argv[])
 		// TEST OPTIMIZED LAPLACE
 
 		//bool dirichlet = true;
-		if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_decreg, M_decreg, laplacesavepath, maxits)){
+		if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_decreg, M_decreg, laplacesavepath, maxits, singleSphere)){
 			std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
 			return 1;
 		}

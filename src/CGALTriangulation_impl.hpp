@@ -930,7 +930,7 @@ template<class TKernel>
 void
 CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> ignoreIndices)
 {
-	bool debug = true;
+	bool debug = false;
 	bool fixBoundaryEdges = true;
 
 	// 1. INIT A AND w from L
