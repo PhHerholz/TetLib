@@ -369,9 +369,10 @@ int main(int argc, char *argv[])
 		if (atoi(argv[3])) singleSphere = true;	
 		mOptions.facet_size             = 0.1; //mOptions.cell_size;
 	}
-	//mOptions.cell_radius_edge_ratio = std::stod(argv[2]);
-	//mOptions.approx_val             = std::stod(argv[3]);
-	//mOptions.facet_size             = std::stod(argv[4]);
+	if (argc >= 5) mOptions.cell_radius_edge_ratio = std::stod(argv[4]);
+	if (argc >= 6) mOptions.approx_val             = std::stod(argv[5]);
+	if (argc >= 7) mOptions.facet_size             = std::stod(argv[6]);
+
 	//mOptions.boundingRad            = std::stod(argv[5]);
 
 	double regnoise = -1;
