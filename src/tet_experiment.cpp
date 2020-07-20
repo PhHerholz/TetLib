@@ -185,7 +185,7 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 	return true;
 }
 
-bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool singleSphere)
+bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool singleSphere, std::string traininglogfile)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -248,7 +248,7 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	if (!singleSphere) {
 		ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
 	}
-	tri.DECLaplacianOptimized(L_opt, stepsize, maxits, targetstyle, ignoreIndices);
+	tri.DECLaplacianOptimized(L_opt, stepsize, maxits, targetstyle, ignoreIndices, traininglogfile);
 
 	std::cout << "(L_dec - L_opt).norm() = " << (L_dec - L_opt).norm() << std::endl;
 
@@ -372,7 +372,7 @@ void testOptimizedLaplace(CGALTriangulation<Kernel>& tri, double stepsize, int m
 	L_optimized = L_dec;
 	std::cout << "run optlaplace" << std::endl;
 	std::vector<int> ignoreIndices;
-	tri.DECLaplacianOptimized(L_optimized, stepsize, maxits, 0, ignoreIndices);
+	tri.DECLaplacianOptimized(L_optimized, stepsize, maxits, 0, ignoreIndices, "");
 }
 
 void testSurfaceVertices(CGALTriangulation<Kernel> tri){
@@ -732,7 +732,7 @@ int main(int argc, char *argv[])
 			feil.close();
 		}
 
-		std::cout << "Viewer stuff " << std::endl;
+		std::cout << "DIRICHLET EXPERIMENT" << std::endl;
 
 		/* ################## HEAT DIFFUSION ################ */
 		
@@ -760,60 +760,62 @@ int main(int argc, char *argv[])
 			std::cout << "innerShell.size: " << innerShell.size() << std::endl;	
 			std::cout << "middleShell.size: " << middleShell.size() << std::endl;	
 			std::cout << "outerShell.size: " << outerShell.size() << std::endl;	
-			return 1;
-		}
+			// return 1;
+		} else {
 
-		// testSurfaceVertices(tri);
+			// testSurfaceVertices(tri);
 
-		Eigen::MatrixXd h_fem, h_dec, h_opt, h_decreg;
-		Eigen::SparseMatrix<double> M, M_dec, M_decreg;
-		std::string laplacesavepath = "";
-		if (saveLaplacians) {
-			laplacesavepath = run_folder + run_name  + run_postfix;
-		}
+			Eigen::MatrixXd h_fem, h_dec, h_opt, h_decreg;
+			Eigen::SparseMatrix<double> M, M_dec, M_decreg;
+			std::string laplacesavepath = "";
+			if (saveLaplacians) {
+				laplacesavepath = run_folder + run_name  + run_postfix;
+			}
 
-		// TEST OPTIMIZED LAPLACE
+			// TEST OPTIMIZED LAPLACE
 
-		//bool dirichlet = true;
-		if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_decreg, M_decreg, laplacesavepath, maxits, singleSphere)){
-			std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
-			return 1;
-		}
-		//solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
+			//bool dirichlet = true;
+			if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_decreg, M_decreg, laplacesavepath, maxits, singleSphere, run_folder + run_name + run_postfix + "_trainlogs.csv")){
+				std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
+				return 1;
+			}
+			//solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
 
-		bool includeMass = false;
+			bool includeMass = false;
 
-		std::cout << "...write heat vals to file... " << std::endl;
-		std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
-		std::ofstream feil;
-		feil.open(res_out_path);
-		feil << "middle shell indices" << std::endl;
-		for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
-		feil << middleShell[middleShell.size()-1] << std::endl;
-		// -----------------------
-		feil << "h_fem" << "," << "h_dec" << "," << "h_opt";
-		if (reg) feil << "," << "h_decreg";
-		if (includeMass){
-			feil << "," << "M" << "," << "M_dec";
-			if (reg) feil << "," << "M_decreg";
-		}
-		feil << std::endl;
-		for (int r = 0; r < h_fem.rows(); ++r) {
-			feil << h_fem(r) << "," << h_dec(r) << "," << h_opt(r);
-			if (reg) feil << "," << h_decreg(r);
-			if (includeMass) {
-				feil << "," << M.coeff(r,r) << "," << M_dec.coeff(r,r);
-				if (reg) feil << "," << M_decreg.coeff(r,r);
+			std::cout << "...write heat vals to file... " << std::endl;
+			std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
+			std::ofstream feil;
+			feil.open(res_out_path);
+			feil << "middle shell indices" << std::endl;
+			for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
+			feil << middleShell[middleShell.size()-1] << std::endl;
+			// -----------------------
+			feil << "h_fem" << "," << "h_dec" << "," << "h_opt";
+			if (reg) feil << "," << "h_decreg";
+			if (includeMass){
+				feil << "," << "M" << "," << "M_dec";
+				if (reg) feil << "," << "M_decreg";
 			}
 			feil << std::endl;
-		}
-		feil.close();
-		std::cout << "Finished the feil" << std::endl;
-		// -----------------------
+			for (int r = 0; r < h_fem.rows(); ++r) {
+				feil << h_fem(r) << "," << h_dec(r) << "," << h_opt(r);
+				if (reg) feil << "," << h_decreg(r);
+				if (includeMass) {
+					feil << "," << M.coeff(r,r) << "," << M_dec.coeff(r,r);
+					if (reg) feil << "," << M_decreg.coeff(r,r);
+				}
+				feil << std::endl;
+			}
+			feil.close();
+			std::cout << "Finished the feil" << std::endl;
+			// -----------------------
 
-		// normalize the heat values:
-		//x = normalizeHeatValues(h_dec);
-		x = normalizeHeatValues(h_opt);
+			// normalize the heat values:
+			//x = normalizeHeatValues(h_dec);
+			x = normalizeHeatValues(h_opt);
+
+		}
 
 		if (!silent) {
 			/* ################## SHOW  MESH ####################*/

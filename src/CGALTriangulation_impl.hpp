@@ -928,7 +928,7 @@ CGALTriangulation<TKernel>::calcLaplaceGradient(Eigen::VectorXd w, int targetsty
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> ignoreIndices)
+CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> ignoreIndices, std::string logpath)
 {
 	bool debug = false;
 	bool fixBoundaryEdges = true;
@@ -961,7 +961,6 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 			int cntr = 0;
 			for (int i=0; i < lpvals.size(); ++i) {
 				if (lpvals(i)> 1e-5) {
-					//std::cout << "constr vertex index: " << constrIndices[i/3] << std::endl;
 					problemVertices.push_back(constrIndices[i/3]);
 					++cntr;
 				}
@@ -986,16 +985,30 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		return;
 	}
 	double targetvalue = calcLaplaceTarget(w, targetstyle); 
+	double minvalue    = w.minCoeff();
 	//std::cout << "finished compute step, start descent" << std::endl;
 	std::cout << "Init targetval: " << targetvalue << std::endl;
+
 
 	// backtracking line search parameters
 	double c   = 0.5;
 	double tau = 0.5;
-
 	int lrupdate = 50;
-
 	double alpha = alpha_init; //stepsize;
+
+	bool logtraining = false;
+	std::ofstream tlogfile;
+	if (logpath.length() > 0) {
+		logtraining = true;
+		tlogfile.open(logpath);
+		// general logging:
+		tlogfile << "targetstyle,lrupdate,fixBoudaryEdges,initAWnorm" << std::endl;
+		tlogfile << targetstyle << "," <<  lrupdate << "," << fixBoundaryEdges << "," << (A*w).norm() << std::endl;
+
+		tlogfile << "iteration,targetval,minval,stepsize" << std::endl;
+		tlogfile << "0," << targetvalue << "," << minvalue << "," << alpha <<  std::endl;
+	}
+
 	for (int s_ind=0; s_ind<maxits; ++s_ind) {
 		// calc gradient and project it
 		gradient = calcLaplaceGradient(w, targetstyle);
@@ -1022,10 +1035,15 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		w = w - alpha * gradient_projected;
 		double oldtargetvalue = targetvalue;
 		targetvalue = calcLaplaceTarget(w, targetstyle);
+		minvalue    = w.minCoeff();
 
 		std::cout << "it " << s_ind << ", targetval: " << targetvalue << std::endl;
-		std::cout << "         (minval= " << w.minCoeff() << std::endl;
-		std::cout << "         (alpha = " << alpha << ")" << std::endl;
+		std::cout << "         (minval= " << minvalue  << std::endl;
+		std::cout << "         (alpha = " << alpha     << ")" << std::endl;
+
+		if (logtraining ) {
+			tlogfile << s_ind << "," << targetvalue << "," << minvalue << "," << alpha <<  std::endl;
+		}
 
 		if (fabs(targetvalue - oldtargetvalue) < 1e-14) {
 			//std::cout << "Alpha < 1e-16, -> break" << std::endl;	
@@ -1034,11 +1052,14 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		}
 	}	
 
-	if (debug) {
-		std::cout << "check linear precision of output values:" << std::endl;
+	if (logtraining) {
 		Eigen::VectorXd lpvals = A * w; // weight matrix w
-		std::cout << lpvals.norm() << std::endl;
+		double endAWnorm = lpvals.norm();
 
+		tlogfile << std::endl << endAWnorm << std::endl;		
+		tlogfile << endAWnorm << std::endl;;
+
+		tlogfile.close();	
 	}
 
 	// reload the optimized matrix and insert it in the result matrix L
