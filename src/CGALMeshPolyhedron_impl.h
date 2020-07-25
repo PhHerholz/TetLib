@@ -289,7 +289,7 @@ public:
 
 template<class TKernel>
 void 
-meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
+meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath)
 {
 	using namespace CGAL::parameters;
 	// Domain
@@ -345,9 +345,21 @@ meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, no_exude(), no_perturb());
 	//if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
 	//if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
-	//if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
+	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
+
+	if (!regweightsoutpath.empty()) {
+		std::ofstream regweightsfile;
+		regweightsfile.open(regweightsoutpath);
+		regweightsfile << "regweight" << std::endl;
+        auto& tr = c3t3.triangulation();
+        for(auto it = tr.finite_vertices_begin(); it != tr.finite_vertices_end(); ++it)
+        {
+			regweightsfile << it->point().weight() << std::endl; 
+        }
+		regweightsfile.close();
+	}
 }
 
 template<class TKernel>
@@ -448,10 +460,10 @@ meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions)
 
 template<class TKernel2, class TKernel>
 void
-meshDoubleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions)
+meshDoubleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath)
 {
     IndexedTetMesh indexed;
-    meshDoubleSphere<TKernel2>(indexed, mOptions);
+    meshDoubleSphere<TKernel2>(indexed, mOptions, regweightsoutpath);
     indexed.convert(tri);
 }
 

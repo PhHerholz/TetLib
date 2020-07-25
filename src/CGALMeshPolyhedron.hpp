@@ -25,4 +25,14 @@ void
 meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions);
 
 
+// DOUBLESPHERE:
+template<class TKernel>
+void 
+meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath="");
+
+template<class TKernel2, class TKernel>
+void
+meshDoubleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath="");
+
+
 #include "CGALMeshPolyhedron_impl.h"

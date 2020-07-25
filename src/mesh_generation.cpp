@@ -364,18 +364,39 @@ int main(int argc, char *argv[])
 	meshingOptions mOptions;
 	mOptions.cell_size              = std::stod(argv[1]);
 	if (atoi(argv[2])) silent = false;
+	std::string regweightssavepath = "";
+
 	bool singleSphere = false;
-	if (argc >=4) {
-		if (atoi(argv[3])) singleSphere = true;	
-		mOptions.facet_size             = 0.1; //mOptions.cell_size;
+	if (argc >=5) {
+		if (atoi(argv[4])) singleSphere = true;	
+		mOptions.facet_size             = 1.; // 0.1 works with 0.02 approx val
+		mOptions.approx_val             = 0.0067;
 	}
-	if (argc >= 5) mOptions.cell_radius_edge_ratio = std::stod(argv[4]);
-	if (argc >= 6) mOptions.approx_val             = std::stod(argv[5]);
-	if (argc >= 7) mOptions.facet_size             = std::stod(argv[6]);
+	if (argc >=8) {
+		if (atoi(argv[5])) mOptions.opt_lloyd   = true;	
+		if (atoi(argv[6])) mOptions.opt_perturb = true;	
+		if (atoi(argv[7])) mOptions.opt_exude   = true;	
+			
+	}
+
+	// filename base 
+	FILENAME_base = "DoubleSphere_";
+	if (singleSphere)
+		FILENAME_base = "SingleSphere_";
+	for (int i=0; i < 1; ++i) FILENAME_base += argv[i+1] + std::string("_");
+	// /filename base
+	if (argc >= 4) {
+		if (atoi(argv[3])){
+			regweightssavepath = "out/" + FILENAME_base + "_regweights.csv";
+			mOptions.opt_exude=true;
+		}
+	}
+
+	//if (argc >= 5) mOptions.cell_radius_edge_ratio = std::stod(argv[4]);
+	//if (argc >= 6) mOptions.approx_val             = std::stod(argv[5]);
+	//if (argc >= 7) mOptions.facet_size             = std::stod(argv[6]);
 
 	//mOptions.boundingRad            = std::stod(argv[5]);
-
-	double regnoise = -1;
 
 	double minVolume     = 0.;
 	bool   boundary_only = true;
@@ -386,17 +407,16 @@ int main(int argc, char *argv[])
 	bool invert_minangle_cmap = true;
 
 	if (!singleSphere) {
-		FILENAME_base = "DoubleSphere_";
-		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
+		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
 	} else {
-		FILENAME_base = "SingleSphere_";
+		if (!regweightssavepath.empty()){
+			std::cout << " REGWEIGHTSPATH NOT IMPL FOR SINGLESPPHERE" << std::endl;
+		}
 		//meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 		meshSingleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
 		//meshSphere(tri, mOptions);
 			
 	}
-
-	for (int i=0; i < 1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 
 	int origin_ind = -1;
 	double origin_changedby=-1;
