@@ -928,10 +928,9 @@ CGALTriangulation<TKernel>::calcLaplaceGradient(Eigen::VectorXd w, int targetsty
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> ignoreIndices, std::string logpath)
+CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L, double alpha_init, int maxits, int targetstyle, std::vector<int> ignoreIndices, bool fixBoundaryEdges,  std::string logpath)
 {
 	bool debug = false;
-	bool fixBoundaryEdges = true;
 
 	// 1. INIT A AND w from L
 	Eigen::VectorXd w;
@@ -993,7 +992,7 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 	// backtracking line search parameters
 	double c   = 0.5;
 	double tau = 0.5;
-	int lrupdate = 50;
+	int lrupdate = 100;
 	double alpha = alpha_init; //stepsize;
 
 	bool logtraining = false;
@@ -1056,7 +1055,7 @@ CGALTriangulation<TKernel>::DECLaplacianOptimized(Eigen::SparseMatrix<double>& L
 		Eigen::VectorXd lpvals = A * w; // weight matrix w
 		double endAWnorm = lpvals.norm();
 
-		tlogfile << std::endl << endAWnorm << std::endl;		
+		tlogfile << "endAWnorm" << std::endl;		
 		tlogfile << endAWnorm << std::endl;;
 
 		tlogfile.close();	
@@ -1787,8 +1786,11 @@ CGALTriangulation<TKernel>::generateRandomRegular(double variance){
 	
 	std::vector< std::pair<WPoint,unsigned> > points;
     for (auto vh : mesh.finite_vertex_handles()) {
-		points.push_back( std::make_pair(WPoint(vh->point(),fabs(d(gen) )),vh->info()) );
+		double randomweight = fabs(d(gen)); 
+		points.push_back( std::make_pair(WPoint(vh->point(),randomweight),vh->info()) );
     }
+	std::cout << std::endl;
+
 
 	//Regular reg;
 	CGALTriangulation<TKernel>::Regular reg;
