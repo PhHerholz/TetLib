@@ -1811,6 +1811,47 @@ CGALTriangulation<TKernel>::generateRandomRegular(double variance){
 
 
 template<class TKernel>
+typename CGALTriangulation<TKernel>::Regular
+CGALTriangulation<TKernel>::generateRegularFromWeightsfile(std::string weightsfilepath){
+
+	std::vector<double> pointweights;
+	std::ifstream weightsfile;
+	weightsfile.open(weightsfilepath); 
+	std::string line;
+	std::getline(weightsfile, line); // skip the header line
+	while(std::getline(weightsfile, line)) {
+		//std::cout << line << std::endl;	
+		pointweights.push_back(std::stod(line));
+	}
+	weightsfile.close();
+	
+	std::vector< std::pair<WPoint,unsigned> > points;
+	int wind=0;
+    for (auto vh : mesh.finite_vertex_handles()) {
+		points.push_back( std::make_pair(WPoint(vh->point(),pointweights[wind]),vh->info()) );
+		++wind;
+    }
+	std::cout << std::endl;
+	std::cout << "Created file list. pointweights.size(): " << pointweights.size() << ", points.size() " << points.size() << std::endl;
+
+	//Regular reg;
+	CGALTriangulation<TKernel>::Regular reg;
+	reg.insert(points.begin(), points.end());
+	std::cout << "Created reg tri with weights from file. Valid?=" << reg.is_valid() << std::endl;
+
+	//handle infos: (finite vertex infos have been set when inserting them)
+    reg.infinite_vertex()->info() = -1;
+	int cnt = 0;
+	for(auto it = reg.cells_begin(); it != reg.cells_end(); ++it)
+	{
+		if(reg.is_infinite(it)) it->info() = -1;
+		else it->info() = cnt++;
+	}
+
+	return reg;
+}
+
+template<class TKernel>
 void
 CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only, bool removeInner){
 

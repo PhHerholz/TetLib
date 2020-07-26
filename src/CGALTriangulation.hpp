@@ -168,6 +168,9 @@ public:
 	Regular
 	generateRandomRegular(double variance);
 
+	Regular
+	generateRegularFromWeightsfile(std::string weightsfilepath);
+
 	void
 	replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0., bool boundary_only=true, bool removeInner=true);
 	

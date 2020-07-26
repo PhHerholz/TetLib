@@ -387,6 +387,7 @@ int main(int argc, char *argv[])
 	// /filename base
 	if (argc >= 4) {
 		if (atoi(argv[3])){
+			std::cout << "WRITE OUT REG WEIGHTS" << std::endl;
 			regweightssavepath = "out/" + FILENAME_base + "_regweights.csv";
 			mOptions.opt_exude=true;
 		}
@@ -406,16 +407,12 @@ int main(int argc, char *argv[])
 	double minangle_max_threshold = 70.5;
 	bool invert_minangle_cmap = true;
 
+	if (!regweightssavepath.empty()) std::cout << "Regwegithssavepath: " << regweightssavepath << std::endl;
+
 	if (!singleSphere) {
 		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
 	} else {
-		if (!regweightssavepath.empty()){
-			std::cout << " REGWEIGHTSPATH NOT IMPL FOR SINGLESPPHERE" << std::endl;
-		}
-		//meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
-		meshSingleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions);
-		//meshSphere(tri, mOptions);
-			
+		meshSingleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
 	}
 
 	int origin_ind = -1;
