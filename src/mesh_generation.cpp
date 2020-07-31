@@ -372,11 +372,13 @@ int main(int argc, char *argv[])
 		mOptions.facet_size             = 1.; // 0.1 works with 0.02 approx val
 		mOptions.approx_val             = 0.0067;
 	}
-	if (argc >=8) {
-		if (atoi(argv[5])) mOptions.opt_lloyd   = true;	
-		if (atoi(argv[6])) mOptions.opt_perturb = true;	
-		if (atoi(argv[7])) mOptions.opt_exude   = true;	
-			
+	if (argc >= 6) {
+		if (atoi(argv[5])) mOptions.use_sizing_field = true;	
+	}
+	if (argc >=9) {
+		if (atoi(argv[6])) mOptions.opt_lloyd   = true;	
+		if (atoi(argv[7])) mOptions.opt_perturb = true;	
+		if (atoi(argv[8])) mOptions.opt_exude   = true;	
 	}
 
 	// filename base 

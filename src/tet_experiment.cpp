@@ -492,7 +492,7 @@ int main(int argc, char *argv[])
 	double regnoise;
 	std::string run_postfix = "";
 	// no gui output
-	bool silent = true;
+	bool silent = false;
 
 	// no calculations, only show mesh
 	bool viewer_only=false;
@@ -785,9 +785,9 @@ int main(int argc, char *argv[])
 			std::cout << "Finished the feil" << std::endl;
 			// -----------------------
 			// normalize the heat values:
-			//x = normalizeHeatValues(h_dec);
+			x = normalizeHeatValues(h_dec);
 			//x = normalizeHeatValues(h_decreg);
-			x = normalizeHeatValues(h_decreg);
+			//x = normalizeHeatValues(h_decreg);
 
 		}
 

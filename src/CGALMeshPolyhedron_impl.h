@@ -214,17 +214,22 @@ struct meshingOptions {
 					   facet_size(1.),
 					   approx_val(0.02),
 					   boundingRad(5.),
+					   minSize(0.02),
 					   opt_lloyd(false),
 					   opt_perturb(false), 
-					   opt_exude(false)  {}
+					   opt_exude(false),
+					   use_sizing_field(false) {}
 	double cell_size;
 	double cell_radius_edge_ratio;
 	double facet_size;
 	double approx_val;
 	double boundingRad;
+	double minSize;
 	bool opt_lloyd;
 	bool opt_perturb;
 	bool opt_exude;
+	bool use_sizing_field;
+
 };
 
 template<class TKernel>
@@ -329,16 +334,32 @@ meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string r
 					 // bounding_object = CGAL::Bbox_3(-3, -3, -3, 3, 3, 3), 
 					 bounding_object = typename TKernel::Sphere_3(CGAL::ORIGIN, mOptions.boundingRad*mOptions.boundingRad),
 					 relative_error_bound = 1e-6);
-	//marc:
-	//Mesh_domain domain(Function_wrapper(v,vps), typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.), 1e-6);
 
 	// CRITERIA
-	//marc:
-	//Facet_criteria facet_criteria(30, 0.02, 0.005); // angle, size, approximation
+	
+	// Sizing field
+	struct non_symmetric_sizing_field
+	{
+		non_symmetric_sizing_field(double cSize=0.2, double mSize=0.02) :	
+										cellSize(cSize),
+										minSize(mSize) {}
+		double cellSize;
+		double minSize;
+
+		typedef typename TKernel::FT FT;
+		typedef typename Mesh_domain::Index Index;
+
+		FT operator()(const Point& p, const int, const Index&) const
+		{
+			// distance from  the plane orthogonal to y and going through (0 -1 0) - 
+			return (p.y() + 2) * ((cellSize - minSize) / 4) + minSize;
+		}
+	};
+
 	Facet_criteria facet_criteria(30, mOptions.facet_size, mOptions.approx_val); // angle, size, approximation
-	//marc:
-	//Cell_criteria cell_criteria(2., 0.4); // radius-edge ratio, size
-	Cell_criteria cell_criteria(mOptions.cell_radius_edge_ratio, mOptions.cell_size); // radius-edge ratio, size
+	
+	non_symmetric_sizing_field size(mOptions.cell_size, mOptions.minSize);
+	Cell_criteria cell_criteria(mOptions.cell_radius_edge_ratio, (mOptions.use_sizing_field)? size : mOptions.cell_size); // radius-edge ratio, size
 	Mesh_criteria criteria(facet_criteria, cell_criteria);
 
 	// Mesh generation
