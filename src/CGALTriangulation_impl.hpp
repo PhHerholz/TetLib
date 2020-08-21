@@ -169,6 +169,7 @@ CGALTriangulation<TKernel>::meanEdgeLengthSquared()
     {
         assert(h->info() != -1);
         std::vector<typename Triangulation::Vertex_handle> adj;
+
         mesh.finite_adjacent_vertices(h, back_inserter(adj));
         
         for(auto hi : adj)
@@ -722,7 +723,7 @@ CGALTriangulation<TKernel>::DECLaplacian(Eigen::SparseMatrix<double>& L, Eigen::
         
         Eigen::MatrixXd LV = L * V;
         
-        for(int i : surfaceVertices())
+        for(int i : surfaceVerticesSlow())
         {
             LV.row(i).setZero();
         }
