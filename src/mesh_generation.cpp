@@ -368,6 +368,7 @@ int main(int argc, char *argv[])
 
 	bool singleSphere = false;
 	if (argc >=5) {
+
 		if (atoi(argv[4])) singleSphere = true;	
 		mOptions.facet_size             = 1.; // 0.1 works with 0.02 approx val
 		mOptions.approx_val             = 0.0067;
