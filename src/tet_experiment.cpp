@@ -185,7 +185,7 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 	return true;
 }
 
-bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_bndropt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool singleSphere, bool addBoundaryOpt, std::string traininglogfilebase)
+bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_bndropt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool singleSphere, bool addOpt, bool addBoundaryOpt, std::string traininglogfilebase, bool useMassMatrices)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -206,7 +206,6 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	tri.DECLaplacian(L_dec, &M_dec);
 
 	// optimize laplacian
-	L_opt = L_dec;
 	float stepsize = 0.1; // 0.0001;
 	int targetstyle = 1; // sum of negative off-diagonal entries
 	std::vector<int> ignoreIndices;
@@ -215,8 +214,11 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	if (!singleSphere) {
 		ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
 	}
-	tri.DECLaplacianOptimized(L_opt, stepsize, maxits, targetstyle, ignoreIndices, true, traininglogfilebase + "opt_trainlogs.csv");
-	std::cout << "(L_dec - L_opt).norm() = " << (L_dec - L_opt).norm() << std::endl;
+
+	if (addOpt) {
+		L_opt = L_dec;
+		tri.DECLaplacianOptimized(L_opt, stepsize, maxits, targetstyle, ignoreIndices, true, traininglogfilebase + "opt_trainlogs.csv");
+	}
 
 	if (addBoundaryOpt) {
 		L_bndropt = L_dec;
@@ -226,7 +228,9 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	if (!laplaceSavePath.empty()) {
 		Eigen::saveMarket( L_dec, laplaceSavePath + "_Ldec.mtx");
 		Eigen::saveMarket( L_fem, laplaceSavePath + "_Lfem.mtx");
-		Eigen::saveMarket( L_opt, laplaceSavePath + "_Lopt.mtx");
+		if (addOpt) {
+			Eigen::saveMarket( L_opt, laplaceSavePath + "_Lopt.mtx");
+		}
 		if (reg) {
 			Eigen::saveMarket(L_r, laplaceSavePath + "_Lreg.mtx");
 		}
@@ -263,22 +267,22 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	std::vector<int> constrIndices(outerShell);
 	constrIndices.insert(constrIndices.end(), innerShell.begin(), innerShell.end());
 
-	/*
-	std::cout << "constrIndices: [";
-	for (int constind: constrIndices) std::cout << constind << ", ";
-	std::cout << "]" << std::endl;
-
-	std::cout << "point 4170: ";
-	for (auto vh: tri.mesh.finite_vertex_handles()) {
-		if (int(vh->info()) == 4170) std::cout << vh->point() << std::endl;
-	}
-	*/
-
+	// CONSTR VALUES
 	Eigen::MatrixXd B(n, 1); B.setZero();
 	Eigen::MatrixXd constrValues(constrIndices.size(), 1);
 	constrValues.setZero();
 	// set inner shell values to 1
 	constrValues.block(outerShell.size(), 0, innerShell.size(), 1) = Eigen::MatrixXd::Ones(innerShell.size(),1);
+
+	double massscaling= 1.; //1e-6;//M.coeffs().minCoeff();
+	Eigen::MatrixXd constrValuesFEM = constrValues;
+	Eigen::MatrixXd constrValuesDEC = constrValues;
+	if (useMassMatrices) {
+		for (int i=0; i < innerShell.size(); ++i) {
+			constrValuesFEM(outerShell.size() + i, 0) *= M.coeff(innerShell[i], innerShell[i])     / massscaling;
+			constrValuesDEC(outerShell.size() + i, 0) *= M_dec.coeff(innerShell[i], innerShell[i]) / massscaling;
+		}
+	}
 
 	std::cout << "SHAPES " <<std::endl;
 	std::cout << constrValues.size() << std::endl;
@@ -294,16 +298,26 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	std::cout << "constrValues.size(): " << constrValues.size() << std::endl;
 
 	std::cout << "...solve fem" << std::endl;
-	solveConstrainedSymmetric(A_fem, B, constrIndices, constrValues, h_fem);
+	solveConstrainedSymmetric(A_fem, B, constrIndices, constrValuesFEM, h_fem);
 	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
 
 	std::cout << "...solve dec" << std::endl;
-	solveConstrainedSymmetric(A_dec, B, constrIndices, constrValues, h_dec);
+	solveConstrainedSymmetric(A_dec, B, constrIndices, constrValuesDEC, h_dec);
 	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 
-	std::cout << "...solve opt" << std::endl;
-	solveConstrainedSymmetric(A_opt, B, constrIndices, constrValues, h_opt);
-	std::cout << h_opt.size() << ", " << h_opt.cols() << std::endl;
+	if (useMassMatrices) {
+		for (int i = 0; i < h_dec.size(); ++i) {
+			h_fem(i) /= M.coeff(i,i)     / massscaling;
+			h_dec(i) /= M_dec.coeff(i,i) / massscaling;
+		}	
+	}
+
+
+	if (addOpt) {
+		std::cout << "...solve opt" << std::endl;
+		solveConstrainedSymmetric(A_opt, B, constrIndices, constrValues, h_opt);
+		std::cout << h_opt.size() << ", " << h_opt.cols() << std::endl;
+	}
 
 	if (addBoundaryOpt) {
 		solveConstrainedSymmetric(A_bndropt, B, constrIndices, constrValues, h_bndropt);
@@ -321,9 +335,11 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 		std::cout << " DEC: " << std::endl;
 		if (!checkLP(tri, L_dec, ignoreIndices)) return false;
 		std::cout << "...done" << std::endl;
-		std::cout << " OPT: " << std::endl;
-		if (!checkLP(tri, L_opt, ignoreIndices)) return false;
-		std::cout << "...done" << std::endl;
+		if (addOpt) {
+			std::cout << " OPT: " << std::endl;
+			if (!checkLP(tri, L_opt, ignoreIndices)) return false;
+			std::cout << "...done" << std::endl;
+		}
 		std::cout << "--------- /LP TEST ---------" << std::endl;
 	}
 
@@ -492,18 +508,21 @@ int main(int argc, char *argv[])
 	double regnoise;
 	std::string run_postfix = "";
 	// no gui output
-	bool silent = false;
+	bool silent = true;
 
 	// no calculations, only show mesh
 	bool viewer_only=false;
 	std::string run_folder = argv[1];
 
-	bool addBoundaryOpt = true;
+	bool addOpt					  = false;
+	bool addBoundaryOpt			  = false;
+	bool includeMass              = true ;
 
 	//double stepsize			   = std::stod(argv[2]);
 	//int    maxits              = atoi(argv[3]);
 
 	bool meshwrite = false;
+	bool regwrite = true;
 	bool saveLaplacians = true;
 	bool output_mel = false;
 	bool meshwrite_only = false;
@@ -521,16 +540,23 @@ int main(int argc, char *argv[])
 	//run_postfix += "_";	
 	}
 
-	int maxits = 500;
+	double boundaryCellMinVol = 0.;
+
 	if (argc >= 5) {
-		maxits = atoi(argv[4]);	
-		run_postfix += std::string("MI") +  std::to_string(maxits) + std::string("_");
+		boundaryCellMinVol = std::stod(argv[4]);
 	}
 
 	if (argc >= 6) {
 		if (atoi(argv[5])) silent = false;
 	}
+
+	int maxits = 500;
 	/*
+	if (argc >= 5) {
+		maxits = atoi(argv[4]);	
+		run_postfix += std::string("MI") +  std::to_string(maxits) + std::string("_");
+	}
+
 	if (argc >= 6) {
 		if (atoi(argv[5])) meshwrite = true;
 	}
@@ -603,7 +629,7 @@ int main(int argc, char *argv[])
 			std::cout << "Number of Cells pre: " << tri.mesh.number_of_finite_cells() << std::endl;
 
 			// replace the triangulation by the regular one
-			bool removeInner = !singleSphere;
+			bool removeInner = true; //!singleSphere;
 
 			int maxtries = 100;
 			for (int tint=0; tint<maxtries; ++tint) { 
@@ -629,7 +655,7 @@ int main(int argc, char *argv[])
 			}
 
 			reg    = &regtri;
-			tri.replaceMeshByRegular(*reg, innerShell, middleShell, outerShell, 0., true, removeInner);
+			tri.replaceMeshByRegular(*reg, innerShell, middleShell, outerShell, boundaryCellMinVol, true, removeInner);
 			if (innerShell.size() < 1 || middleShell.size() < 1 || outerShell.size() < 1) {
 				std::cout << "spheresizes post: " << innerShell.size() << ", " << middleShell.size() << ", " << outerShell.size() << std::endl;
 			}
@@ -647,6 +673,25 @@ int main(int argc, char *argv[])
 				std::string outfile = run_folder + run_name  + run_postfix + ".meshfile";
 				tri.write(outfile);
 			}
+
+			if (regwrite && reg) {
+				std::string regweightsoutpath = run_folder + run_name  + run_postfix + "_regweights.csv";
+				std::ofstream regweightsfile;
+				regweightsfile.open(regweightsoutpath);
+				regweightsfile << "regweight" << std::endl;
+				int cntr = 0;
+				for(auto it = reg->finite_vertices_begin(); it != reg->finite_vertices_end(); ++it)
+				{
+					if (it->info() != cntr) {
+						regweightsfile << "ERROR: it->info() not in order! " << std::endl;
+						break;
+					}
+					++cntr;
+					regweightsfile << it->point().weight() << std::endl; 
+				}
+				regweightsfile.close();
+			}
+
 		} else if (regnoise == -2.) {
 			// load reg tri with weights from file
 
@@ -744,16 +789,10 @@ int main(int argc, char *argv[])
 				laplacesavepath = run_folder + run_name  + run_postfix;
 			}
 
-			// TEST OPTIMIZED LAPLACE
-
-			//bool dirichlet = true;
-			if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_bndropt, h_decreg, M_decreg, laplacesavepath, maxits, singleSphere, addBoundaryOpt, run_folder + run_name + run_postfix)){
+			if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_bndropt, h_decreg, M_decreg, laplacesavepath, maxits, singleSphere, addOpt, addBoundaryOpt, run_folder + run_name + run_postfix, false)){
 				std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
 				return 1;
 			}
-			//solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg);
-
-			bool includeMass = false;
 
 			std::cout << "...write heat vals to file... " << std::endl;
 			std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
@@ -763,16 +802,18 @@ int main(int argc, char *argv[])
 			for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
 			feil << middleShell[middleShell.size()-1] << std::endl;
 			// -----------------------
-			feil << "h_fem" << "," << "h_dec" << "," << "h_opt";
+			feil << "h_fem" << "," << "h_dec"; 
+			if (addOpt)         feil << "," << "h_opt";
 			if (addBoundaryOpt) feil << "," << "h_bndropt";
-			if (reg) feil << "," << "h_decreg";
+			if (reg)            feil << "," << "h_decreg";
 			if (includeMass){
 				feil << "," << "M" << "," << "M_dec";
 				if (reg) feil << "," << "M_decreg";
 			}
 			feil << std::endl;
 			for (int r = 0; r < h_fem.rows(); ++r) {
-				feil << h_fem(r) << "," << h_dec(r) << "," << h_opt(r);
+				feil << h_fem(r) << "," << h_dec(r);
+				if (addOpt)         feil << "," << h_opt(r);
 				if (addBoundaryOpt) feil << "," << h_bndropt(r);
 				if (reg) feil << "," << h_decreg(r);
 				if (includeMass) {
@@ -785,9 +826,7 @@ int main(int argc, char *argv[])
 			std::cout << "Finished the feil" << std::endl;
 			// -----------------------
 			// normalize the heat values:
-			x = normalizeHeatValues(h_dec);
-			//x = normalizeHeatValues(h_decreg);
-			//x = normalizeHeatValues(h_decreg);
+			x = normalizeHeatValues(h_fem);
 
 		}
 
@@ -837,7 +876,7 @@ int main(int argc, char *argv[])
 			int dir = 0;
 
 			Metric metric = minangle;
-			static bool showHeat   = true;
+			static bool showHeat   = false;
 
 			// Add content to the default menu window
 			menu.callback_draw_viewer_menu = [&]()
