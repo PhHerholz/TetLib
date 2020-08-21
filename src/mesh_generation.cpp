@@ -366,13 +366,21 @@ int main(int argc, char *argv[])
 	if (atoi(argv[2])) silent = false;
 	std::string regweightssavepath = "";
 
-	bool singleSphere = false;
-	if (argc >=5) {
-
-		if (atoi(argv[4])) singleSphere = true;	
-		mOptions.facet_size             = 1.; // 0.1 works with 0.02 approx val
-		mOptions.approx_val             = 0.0067;
+	bool singleSphere = false; // works for facet_size = 1., approx_val = 0.0067;
+	bool embeddedDoubleSphere = false;
+	if (argc >=4) {
+		if (atoi(argv[3])) embeddedDoubleSphere = true;	
+		mOptions.facet_size             = std::stod(argv[4]); //1.; // 0.1 works with 0.02 approx val
+		mOptions.approx_val             = std::stod(argv[5]); //0.0067;
 	}
+
+
+	mOptions.opt_lloyd        = false;
+	mOptions.opt_perturb      = false;
+	mOptions.opt_exude        = false;
+	mOptions.use_sizing_field = false;
+
+	/*
 	if (argc >= 6) {
 		if (atoi(argv[5])) mOptions.use_sizing_field = true;	
 	}
@@ -381,13 +389,18 @@ int main(int argc, char *argv[])
 		if (atoi(argv[7])) mOptions.opt_perturb = true;	
 		if (atoi(argv[8])) mOptions.opt_exude   = true;	
 	}
+	*/
 
 	// filename base 
 	FILENAME_base = "DoubleSphere_";
 	if (singleSphere)
 		FILENAME_base = "SingleSphere_";
+	if (embeddedDoubleSphere)
+		FILENAME_base = "EmbeddedDoubleSphere_";
 	for (int i=0; i < 1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 	// /filename base
+	
+	/*
 	if (argc >= 4) {
 		if (atoi(argv[3])){
 			std::cout << "WRITE OUT REG WEIGHTS" << std::endl;
@@ -395,6 +408,7 @@ int main(int argc, char *argv[])
 			mOptions.opt_exude=true;
 		}
 	}
+	*/
 
 	//if (argc >= 5) mOptions.cell_radius_edge_ratio = std::stod(argv[4]);
 	//if (argc >= 6) mOptions.approx_val             = std::stod(argv[5]);
@@ -412,10 +426,12 @@ int main(int argc, char *argv[])
 
 	if (!regweightssavepath.empty()) std::cout << "Regwegithssavepath: " << regweightssavepath << std::endl;
 
-	if (!singleSphere) {
-		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
-	} else {
+	if (singleSphere) {
 		meshSingleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
+	} else if (embeddedDoubleSphere) {
+		meshEmbeddedDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
+	} else {
+		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
 	}
 
 	int origin_ind = -1;
