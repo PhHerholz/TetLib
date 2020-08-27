@@ -185,7 +185,7 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 	return true;
 }
 
-bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_bndropt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool singleSphere, bool addOpt, bool addBoundaryOpt, std::string traininglogfilebase, bool useMassMatrices)
+bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_bndropt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool ignoreInner, bool addOpt, bool addBoundaryOpt, std::string traininglogfilebase, bool useMassMatrices)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -208,12 +208,15 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	// optimize laplacian
 	float stepsize = 0.1; // 0.0001;
 	int targetstyle = 1; // sum of negative off-diagonal entries
-	std::vector<int> ignoreIndices;
 
+	/*
+	std::vector<int> ignoreIndices;
 	ignoreIndices.insert(ignoreIndices.end(), outerShell.begin(), outerShell.end());
-	if (!singleSphere) {
+	if (ignoreInner) {
 		ignoreIndices.insert(ignoreIndices.end(), innerShell.begin(), innerShell.end());
-	}
+	} 
+	*/
+	std::vector<int> ignoreIndices = tri.surfaceVerticesSlow();
 
 	if (addOpt) {
 		L_opt = L_dec;
@@ -514,17 +517,18 @@ int main(int argc, char *argv[])
 	bool viewer_only=false;
 	std::string run_folder = argv[1];
 
-	bool addOpt					  = false;
+	bool addOpt					  = true;
 	bool addBoundaryOpt			  = false;
-	bool includeMass              = true ;
+	bool includeMass              = false;
 
 	//double stepsize			   = std::stod(argv[2]);
 	//int    maxits              = atoi(argv[3]);
+	static bool showHeat   = true;
 
-	bool meshwrite = false;
-	bool regwrite = true;
-	bool saveLaplacians = true;
-	bool output_mel = false;
+	bool meshwrite      = false;
+	bool regwrite       = false;
+	bool saveLaplacians = false;
+	bool output_mel     = false;
 	bool meshwrite_only = false;
 	regnoise = -1;
 	if (argc >= 3) {
@@ -549,6 +553,8 @@ int main(int argc, char *argv[])
 	if (argc >= 6) {
 		if (atoi(argv[5])) silent = false;
 	}
+
+	std::cout << "Silent: " << silent << std::endl;
 
 	int maxits = 500;
 	/*
@@ -606,13 +612,19 @@ int main(int argc, char *argv[])
 		loadMeshWithShellIndices(tri, innerShell, middleShell, outerShell, filepath, originind);
 
 		bool singleSphere = false;
+		bool embeddedDoubleSphere = false;
+		bool removeInner = true;
 		if (run_name.rfind("SingleSphere", 0) == 0) {
 			singleSphere = true;	
+			removeInner  = false;
 
 			middleShell = innerShell;
 			innerShell.clear();
 			innerShell.push_back(originind);
 
+		} else if (run_name.rfind("EmbeddedDoubleSphere", 0) == 0) {
+			embeddedDoubleSphere = true;
+			removeInner = false;
 		}
 		std::cout << "..loaded Singlesphere : " << singleSphere << std::endl;
 		std::cout << "Sphere Sizes: " << innerShell.size() << "," << middleShell.size() << "," << outerShell.size() << std::endl;
@@ -629,7 +641,6 @@ int main(int argc, char *argv[])
 			std::cout << "Number of Cells pre: " << tri.mesh.number_of_finite_cells() << std::endl;
 
 			// replace the triangulation by the regular one
-			bool removeInner = true; //!singleSphere;
 
 			int maxtries = 100;
 			for (int tint=0; tint<maxtries; ++tint) { 
@@ -789,7 +800,7 @@ int main(int argc, char *argv[])
 				laplacesavepath = run_folder + run_name  + run_postfix;
 			}
 
-			if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_bndropt, h_decreg, M_decreg, laplacesavepath, maxits, singleSphere, addOpt, addBoundaryOpt, run_folder + run_name + run_postfix, false)){
+			if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_bndropt, h_decreg, M_decreg, laplacesavepath, maxits, removeInner, addOpt, addBoundaryOpt, run_folder + run_name + run_postfix, false)){
 				std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
 				return 1;
 			}
@@ -876,7 +887,6 @@ int main(int argc, char *argv[])
 			int dir = 0;
 
 			Metric metric = minangle;
-			static bool showHeat   = false;
 
 			// Add content to the default menu window
 			menu.callback_draw_viewer_menu = [&]()
