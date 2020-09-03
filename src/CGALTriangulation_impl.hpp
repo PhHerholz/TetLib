@@ -1291,6 +1291,218 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
 
 
 template<class TKernel>
+void
+CGALTriangulation<TKernel>::DECLaplacianRegular(C3t3 c3t3, Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M)
+{
+    std::vector<Eigen::Triplet<double>> triplets;
+    const int nv = c3t3.triangulation().number_of_vertices();
+    
+    // turn off some costly sanity tests
+    bool dbg = true;
+	bool dbg2 = false;
+    bool dbg3 = false;
+    
+    std::vector<typename TKernel::Vector_3> vecs(nv);
+    
+    if(M)
+    {
+        M->resize(nv, nv);
+        M->resizeNonZeros(nv);
+        
+        for(int i = 0; i < nv; ++i)
+        {
+            M->outerIndexPtr()[i] = i;
+            M->innerIndexPtr()[i] = i;
+            M->valuePtr()[i] = .0;
+        }
+        
+        M->outerIndexPtr()[nv] = nv;
+    }
+    
+    //for(auto h : reg.finite_cell_handles())
+    for(auto h =  c3t3.cells_in_complex_begin(); h !=  c3t3.cells_in_complex_end(); ++h)
+    {
+        auto tet = c3t3.triangulation().tetrahedron(h);
+        double vol = tet.volume();
+        
+        for(int i = 0; i < 4; ++i)
+            for(int j = 0; j < 4; ++j)
+            if( i != j )
+            {
+                const int k = Triangulation::next_around_edge(i, j);
+                const int l = Triangulation::next_around_edge(j, i);
+
+				typedef typename TKernel::Plane_3 Plane;
+				typedef typename TKernel::Line_3  Line;
+				typedef typename TKernel::Segment_3  Segment;
+
+				auto tet_dual  = c3t3.triangulation().dual(h);
+				auto face_dual_res = c3t3.triangulation().dual(h, l); // facet (tet[i], tet[j], tet[k]);
+				Segment face_dual;
+				assign(face_dual, face_dual_res);
+
+				// auto ccf = CGAL::circumcenter(tet[i], tet[j], tet[k]);
+
+				Line  fd_line   = face_dual.supporting_line();
+				Plane tri_plane(tet[i], tet[j], tet[k]);
+				auto ccf_res = intersection(tri_plane, fd_line);
+				auto ccf = boost::get<Point>(&*ccf_res);
+
+				// auto cce = CGAL::circumcenter(tet[i], tet[j]);
+				auto edge = tet[j] - tet[i];
+				Line edge_line(tet[i], edge);
+				Plane dual_plane(tet_dual, edge);
+				//auto cce = intersection(dual_plane, edge_line);
+				
+				// access point directly since intersection cannot be a line in this case
+				auto cce_res = intersection(dual_plane, edge_line);
+				auto cce = boost::get<Point>(&*cce_res);
+
+				auto edge_normalized = edge / sqrt(edge.squared_length());
+				Point cce_const = CGAL::ORIGIN + (edge_normalized * (tet_dual - tet[i])) * edge_normalized;
+
+				//std::cout << "Calced" << std::endl;
+
+				// ----------------------------------------------
+				// construct ccf hopefully correctly?
+				double tri_area = 0.5 * sqrt(CGAL::cross_product(tet[j] - tet[i], tet[k] - tet[i]).squared_length());
+
+				Point ccf_const = tet[i]; 
+				// contrib of point k
+				auto e_k = (tet[j] - tet[i]) / sqrt((tet[j]-tet[i]).squared_length());
+				auto normal_k   = tet[k] - (tet[i] + e_k * ((tet[k]- tet[i]) * e_k));
+				normal_k = normal_k / sqrt(normal_k.squared_length()) * sqrt((tet[j] - tet[i]).squared_length());
+				ccf_const += (((tet[k] - tet[i]).squared_length() + h->vertex(i)->point().weight() - h->vertex(k)->point().weight()) * normal_k) / (4. * tri_area) ; 
+				//contrib of point j
+				auto e_j = (tet[k] - tet[i]) / sqrt((tet[k]-tet[i]).squared_length());
+				auto normal_j   = tet[j] - (tet[i] + e_j * ((tet[j]- tet[i]) * e_j));
+				normal_j = normal_j / sqrt(normal_j.squared_length()) * sqrt((tet[k] - tet[i]).squared_length());
+				ccf_const += (((tet[j] - tet[i]).squared_length() + h->vertex(i)->point().weight() - h->vertex(j)->point().weight()) * normal_j) / (4. * tri_area); 
+
+				//auto nrml_const = 0.5 * CGAL::cross_product(ccf_const - cce_const, tet_dual - cce_const); 
+				auto nrml_const = 0.5 * CGAL::cross_product(ccf_const - *cce, tet_dual - *cce);
+				double val = (nrml_const * edge) / edge.squared_length();
+				// ----------------------------------------------
+                const int r = h->vertex(i)->info();
+                const int s = h->vertex(j)->info();
+            
+                if(M)
+                {
+					// TODO: eddge.squared_length the correct thing here?
+                    M->valuePtr()[r] += val * (edge.squared_length()) / 6.;
+                    M->valuePtr()[s] += val * (edge.squared_length()) / 6.;
+                }
+
+				if (dbg2) {
+					// compare with non-weighte circumcenter calls (only makes sense if weights are all 0)
+                    auto cc_nr  = CGAL::circumcenter(tet);
+                    auto ccf_nr = CGAL::circumcenter(tet[i], tet[j], tet[k]);
+                    auto cce_nr = CGAL::circumcenter(tet[i], tet[j]);
+            
+                    auto nrml_nr = 0.5 * CGAL::cross_product(ccf_nr - cce_nr, cc_nr - cce_nr);
+                    double val2 = (nrml_nr * edge) / edge.squared_length();
+
+					Point cce_const = tet[i] + 0.5 * (edge.squared_length() + h->vertex(i)->point().weight() - h->vertex(j)->point().weight()) * (edge / sqrt(edge.squared_length()));
+
+					if (std::abs(val - val2) > 1e-13) {
+
+						std::cout << std::endl << "Val  : " << val << std::endl;
+						std::cout << "Val2 : " << val2 << std::endl;
+						std::cout << "CC  - CC_nr  = " << tet_dual - cc_nr << std::endl;
+						std::cout << "CCF - CCF_nr = " << *ccf - ccf_nr << std::endl;
+						std::cout << "CCE - CCE_nr = " << *cce - cce_nr << std::endl;
+
+						std::cout << std::endl;
+						std::cout << "CCF      : " << *ccf      << std::endl;
+						std::cout << "CCF_nr   : " << ccf_nr    << std::endl;
+						std::cout << "ccf_const: " << ccf_const << std::endl;
+
+						std::cout << std::endl;
+						std::cout << "CCE       : " << *cce      << std::endl;
+						std::cout << "CCE_nr    : " << cce_nr    << std::endl;
+						std::cout << "CCE_const : " << cce_const << std::endl;
+
+					}
+
+                }
+
+				if (dbg3) {
+					// compare to phillipps dec impl (only makes sense if weights are all 0)
+					
+					auto a2 = tet[i] - tet[l];
+					auto b = tet[j] - tet[l];
+					auto c = tet[k] - tet[l];
+					
+					auto b2 = tet[i] - tet[k];
+					auto c2 = tet[j] - tet[i];
+					auto a =  tet[k] - tet[j];
+					
+					 
+					const double n = (a * b2) * (b2 * c2) * (c * a2) + (b2 * c2) * (c2 * a) * (a2 * b)
+					+ (c2 * a) * (a * b2) * (b * c) + (a * b2) * (b2 * c2) * (c2 * a);
+				  
+					const double d = 192 * vol * 0.25 * CGAL::cross_product(b2, a).squared_length();
+					const double fac = std::abs(d) < 1e-24 ? .0 : 1. / d;
+					const double val3 = -n * (a * b2) * fac;
+
+					
+					if (std::abs(val - val3) > 1e-13) {
+						std::cout << "ERROR: " << val << "!= " << val3 << std::endl;
+					}
+				}
+
+				if (r > nv) {
+					std::cout << "r " << r << " OUT!!!!!!" << std::endl;	
+				}
+				if (s > nv) {
+					std::cout << "s " << s << " OUT!!!!!!" << std::endl;	
+				}
+
+                triplets.emplace_back(r, r, -val);
+                triplets.emplace_back(s, s, -val);
+                    
+                triplets.emplace_back(r, s, val);
+                triplets.emplace_back(s, r, val);
+
+				/*
+				if(std::abs(val - val2) > 1e-10) std::cout << "error: " << val << " " << val2 << std::endl;
+			  
+				vecs[r] += nrml;
+				vecs[s] -= nrml;
+				*/
+
+            }
+    }
+    
+   
+    L.resize(nv, nv);
+    L.setFromTriplets(triplets.begin(), triplets.end());
+    
+    if(dbg)
+    {
+		// check linear precision
+        Eigen::MatrixXd V(nv, 3);
+        
+        for(auto h : c3t3.triangulation().finite_vertex_handles())
+        {
+            V(h->info(), 0) = h->point().x();
+            V(h->info(), 1) = h->point().y();
+            V(h->info(), 2) = h->point().z();
+        }
+        
+        Eigen::MatrixXd LV = L * V;
+        
+        for(int i : surfaceVertices())
+        {
+            LV.row(i).setZero();
+        }
+        
+        std::cout << "linear precision " << LV.norm() << std::endl;
+    }
+}
+
+
+template<class TKernel>
 std::vector<char>
 CGALTriangulation<TKernel>::surfaceVertexFlag()
 {
@@ -1672,6 +1884,18 @@ CGALTriangulation<TKernel>::calcAMIPSAllCells(Eigen::VectorXd &E) {
 		E(cid) = (J.transpose()*J).trace() / J.determinant();
 	}
 }
+
+
+template<class TKernel>
+void  
+CGALTriangulation<TKernel>::calcDistToPointAllVertices(Eigen::VectorXd &D, Point p)
+{
+	D.resize(mesh.number_of_vertices());
+    for(auto vh : mesh.finite_vertex_handles()) {	
+		D(vh->info()) = sqrt(CGAL::squared_distance(vh->point(), p));
+	}
+}
+
 
 // WARNING: this method resets the cell indices.
 template<class TKernel>

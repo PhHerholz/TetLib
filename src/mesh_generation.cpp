@@ -366,14 +366,14 @@ int main(int argc, char *argv[])
 	if (atoi(argv[2])) silent = false;
 	std::string regweightssavepath = "";
 
-	bool singleSphere = false; // works for facet_size = 1., approx_val = 0.0067;
-	bool embeddedDoubleSphere = false;
+	int spheretype = 3; // 0: doublesphere, 1: singlesphere, 2: embeddeddoublesphere 3: originsphere
+	//bool singleSphere = false; // works for facet_size = 1., approx_val = 0.0067;
+	//bool embeddedDoubleSphere = false;
 	if (argc >=4) {
-		if (atoi(argv[3])) embeddedDoubleSphere = true;	
+		spheretype = atoi(argv[3]);	
 		mOptions.facet_size             = std::stod(argv[4]); //1.; // 0.1 works with 0.02 approx val
 		mOptions.approx_val             = std::stod(argv[5]); //0.0067;
 	}
-
 
 	mOptions.opt_lloyd        = false;
 	mOptions.opt_perturb      = false;
@@ -393,22 +393,24 @@ int main(int argc, char *argv[])
 
 	// filename base 
 	FILENAME_base = "DoubleSphere_";
-	if (singleSphere)
+	if (spheretype == 1)
 		FILENAME_base = "SingleSphere_";
-	if (embeddedDoubleSphere)
+	if (spheretype == 2)
 		FILENAME_base = "EmbeddedDoubleSphere_";
+	if (spheretype == 3)
+		FILENAME_base = "OriginSphere";
 	for (int i=0; i < 1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 	// /filename base
 	
-	/*
-	if (argc >= 4) {
-		if (atoi(argv[3])){
+	if (argc >= 7) {
+		if (atoi(argv[6])){
 			std::cout << "WRITE OUT REG WEIGHTS" << std::endl;
 			regweightssavepath = "out/" + FILENAME_base + "_regweights.csv";
-			mOptions.opt_exude=true;
+			mOptions.opt_lloyd   = true;
+			//mOptions.opt_perturb = true;
+			mOptions.opt_exude   = true;
 		}
 	}
-	*/
 
 	//if (argc >= 5) mOptions.cell_radius_edge_ratio = std::stod(argv[4]);
 	//if (argc >= 6) mOptions.approx_val             = std::stod(argv[5]);
@@ -426,10 +428,13 @@ int main(int argc, char *argv[])
 
 	if (!regweightssavepath.empty()) std::cout << "Regwegithssavepath: " << regweightssavepath << std::endl;
 
-	if (singleSphere) {
+	// spheretype 0: doublesphere, 1:singlesphere, 2:embeddeddoublesphere, 3:originsphere
+	if (spheretype==1) {
 		meshSingleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
-	} else if (embeddedDoubleSphere) {
+	} else if (spheretype == 2) {
 		meshEmbeddedDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
+	} else if (spheretype == 3) {
+		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
 	} else {
 		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
 	}
@@ -442,11 +447,16 @@ int main(int argc, char *argv[])
 	double mels = tri.meanEdgeLengthSquared();
 	std::cout << "MEL: " << sqrt(mels) << std::endl;
 
-	if (singleSphere) {
+	if (spheretype == 1 || spheretype == 3) {
+		double orbitdist = 1.;
+		// set orbitdist larger than sphere radius -> no orbitpoints are added
+		// -> only the closest point is moved to the origin.
+		if (spheretype == 3) orbitdist=666;
+
 		// #########################################
 		std::cout << "Add origin and orbitpoints ifo MEL" << std::endl;
 		// #########################################
-		adjustPointsOriginAndOrbit(tri, orbit_indices, orbit_changedby, 1.0);
+		adjustPointsOriginAndOrbit(tri, orbit_indices, orbit_changedby, orbitdist);
 		std::cout << "Added " << orbit_indices.size() - 1 << " orbitpoints (MELMELMEL)" << std::endl;
 
 		origin_ind = orbit_indices[orbit_indices.size()-1];

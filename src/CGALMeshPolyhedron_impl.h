@@ -34,9 +34,14 @@ namespace internal
             idMap[it] = cnt++;
             tm.vertices.push_back({it->point().x(), it->point().y(), it->point().z() });
         }
+
+		std::cout << "tr.number_of_vertices(): " << tr.number_of_vertices() << std::endl;
+		std::cout << "tr.number_of_cells(): "    << tr.number_of_cells()    << std::endl;
         
+		int ciccnt = 0;
         for(auto it =  mesh.cells_in_complex_begin(); it !=  mesh.cells_in_complex_end(); ++it)
         {
+
             if(idMap.find(it->vertex(0)) != idMap.end()
                && idMap.find(it->vertex(1)) != idMap.end()
                && idMap.find(it->vertex(2)) != idMap.end()
@@ -48,8 +53,10 @@ namespace internal
                     idMap[it->vertex(2)],
                     idMap[it->vertex(3)]
                 });
+				ciccnt++;
             }
         }
+		std::cout << "transfered " << ciccnt << " cells from the complex to IndexedTetMesh" << std::endl;
         
         return tm;
     }
@@ -234,7 +241,7 @@ struct meshingOptions {
 
 template<class TKernel>
 void 
-meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
+meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath)
 {
     using namespace CGAL;
     using namespace CGAL::parameters;
@@ -271,6 +278,18 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions)
 	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
+
+	if (!regweightsoutpath.empty()) {
+		std::ofstream regweightsfile;
+		regweightsfile.open(regweightsoutpath);
+		regweightsfile << "regweight" << std::endl;
+        auto& tr = c3t3.triangulation();
+        for(auto it = tr.finite_vertices_begin(); it != tr.finite_vertices_end(); ++it)
+        {
+			regweightsfile << it->point().weight() << std::endl; 
+        }
+		regweightsfile.close();
+	}
 }
 
 
@@ -581,10 +600,10 @@ meshSingleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string r
 
 template<class TKernel2, class TKernel>
 void
-meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions)
+meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath)
 {
     IndexedTetMesh indexed;
-    meshSphere<TKernel2>(indexed, mOptions);
+    meshSphere<TKernel2>(indexed, mOptions, regweightsoutpath);
     indexed.convert(tri);
 }
 

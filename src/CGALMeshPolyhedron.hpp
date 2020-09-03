@@ -18,11 +18,11 @@ sphere_function (const typename TKernel::Point& p);
 
 template<class TKernel>
 void
-meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions);
+meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath="");
 
 template<class TKernel2, class TKernel>
 void 
-meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions);
+meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath="");
 
 
 // DOUBLESPHERE:
@@ -34,7 +34,7 @@ template<class TKernel2, class TKernel>
 void
 meshDoubleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath="");
 
-// SINGLESPHERE:
+// SINGLESPHERE (contains origin and a middleShell):
 template<class TKernel>
 void 
 meshSingleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath="");

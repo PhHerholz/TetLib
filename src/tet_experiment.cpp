@@ -41,7 +41,7 @@ typedef Kernel::Point_3 Point;
 
 #include <Eigen/Dense>
 
-void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, int &originind )
+void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, int &originind, double radius=2.)
 {
 	/// retrieve the indices of all points lying on the three spherical shells by their distance to the origin
 
@@ -49,9 +49,14 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 	innerShell.clear();
 	middleShell.clear();
 	outerShell.clear();
+	/*
 	double d_i = 1.0;
 	double d_m = 1.5;
 	double d_o = 2.0;
+	*/
+	double d_i = radius/2.;
+	double d_m = radius*3/4;
+	double d_o = radius;
 	
 	// this is the smallest threshold that seems to find all points
 	// (for doublesphere it seemed to be 1e-5, for single 1e-4
@@ -67,7 +72,6 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 		}
 
 		if (fabs(dist - d_i) < eps) {
-			// inner shell, includes all points in the hole (if filled by our reg tri insertion)
 			innerShell.push_back(vh->info());
 		}
 		if (fabs(dist - d_m) < eps) {
@@ -85,10 +89,16 @@ loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &inner
 {
 	// load Triangulation from file and read orbitpoints
 	tri.read(filepath);
-	retrieveShellIndices(tri, innerShell, middleShell, outerShell, originind);
+	double maxdist=0.;
+	for (auto vh: tri.mesh.finite_vertex_handles()) {
+		double dist = sqrt(CGAL::squared_distance(vh->point(), Point(CGAL::ORIGIN)));		
+		if (dist < maxdist) maxdist = dist;
+	}
+
+	retrieveShellIndices(tri, innerShell, middleShell, outerShell, originind, maxdist);
 }
 
-void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
+void solveHeatProblem_old(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -154,6 +164,62 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 		solveConstrainedSymmetric(A_decreg, B, constrIndices, constrValues, h_decreg);
 		std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
 	}
+}
+
+void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M, Eigen::SparseMatrix<double>& M_dec, Eigen::SparseMatrix<double>& M_decreg, double t=-1)
+{
+	//const int cntr = tri.centerVertex();
+	const int n = tri.mesh.number_of_vertices();
+
+	// Construct A 
+	Eigen::SparseMatrix<double> A_fem, A_dec, A_decreg, L_fem, L_dec, L_r, Id(n,n);
+	Id.setIdentity();
+
+	if (reg) {
+		std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
+		tri.DECLaplacianRegular(*reg, L_r, &M_decreg);
+	}
+
+	tri.massMatrix(M);
+	tri.FEMLaplacian(L_fem);
+	tri.DECLaplacian(L_dec, &M_dec);
+
+	if (t<0) {
+		std::cout << "t < 0 -> set to mean edge length squared" << std::endl;
+		t = tri.meanEdgeLengthSquared();
+	}
+	std::cout << "t = " << t << std::endl;
+
+	A_fem = M     + t * L_fem;
+	A_dec = M_dec - t * L_dec; 
+
+	Eigen::MatrixXd b_base(n, 1); b_base.setZero();
+	for (int i: innerShell) {
+		b_base(i) = 1.;
+	}
+
+	std::cout << "start solve" << std::endl;
+
+	// Solve FEM
+	Eigen::MatrixXd B_fem = b_base; //M * b_base;
+	Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_fem;
+    chol_fem.analyzePattern(A_fem);
+    chol_fem.factorize(A_fem);
+    h_fem = chol_fem.solve(B_fem);
+
+	// Solve DEC
+	Eigen::MatrixXd B_dec = b_base; // M_dec * b_base;
+	Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_dec;
+    chol_dec.analyzePattern(A_dec);
+    chol_dec.factorize(A_dec);
+    h_dec = chol_dec.solve(B_dec);
+
+	/*
+	if (reg) {	
+		A_decreg = M_r - t * L_r;
+		// TODO: implement
+	}
+	*/
 }
 
 bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std::vector<int> ignoreIndices) {
@@ -508,18 +574,18 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
+	bool heatdiffusion = true;
+	bool dirichlet     = false;
+
 	double regnoise;
 	std::string run_postfix = "";
 	// no gui output
 	bool silent = true;
 
-	// no calculations, only show mesh
-	bool viewer_only=false;
 	std::string run_folder = argv[1];
-
-	bool addOpt					  = true;
+	bool addOpt					  = false;
 	bool addBoundaryOpt			  = false;
-	bool includeMass              = false;
+	bool includeMass              = true;
 
 	//double stepsize			   = std::stod(argv[2]);
 	//int    maxits              = atoi(argv[3]);
@@ -780,66 +846,144 @@ int main(int argc, char *argv[])
 			feil.close();
 		}
 
-		std::cout << "DIRICHLET EXPERIMENT" << std::endl;
 
-		/* ################## HEAT DIFFUSION ################ */
-		if (innerShell.size() < 1 || middleShell.size() < 1 || outerShell.size() < 1) {
-			std::cout << "Error with the shell points, abort." << std::endl;	
-			std::cout << "innerShell.size: " << innerShell.size() << std::endl;	
-			std::cout << "middleShell.size: " << middleShell.size() << std::endl;	
-			std::cout << "outerShell.size: " << outerShell.size() << std::endl;	
-			// return 1;
-		} else {
+		if (dirichlet) {
+			std::cout << "DIRICHLET EXPERIMENT" << std::endl;
 
-			// testSurfaceVertices(tri);
+			/* ################## HEAT DIFFUSION ################ */
+			if (innerShell.size() < 1 || middleShell.size() < 1 || outerShell.size() < 1) {
+				std::cout << "Error with the shell points, abort." << std::endl;	
+				std::cout << "innerShell.size: " << innerShell.size() << std::endl;	
+				std::cout << "middleShell.size: " << middleShell.size() << std::endl;	
+				std::cout << "outerShell.size: " << outerShell.size() << std::endl;	
+				// return 1;
+			} else {
 
-			Eigen::MatrixXd h_fem, h_dec, h_opt, h_bndropt, h_decreg;
-			Eigen::SparseMatrix<double> M, M_dec, M_decreg;
-			std::string laplacesavepath = "";
-			if (saveLaplacians) {
-				laplacesavepath = run_folder + run_name  + run_postfix;
-			}
+				// testSurfaceVertices(tri);
 
-			if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_bndropt, h_decreg, M_decreg, laplacesavepath, maxits, removeInner, addOpt, addBoundaryOpt, run_folder + run_name + run_postfix, false)){
-				std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
-				return 1;
-			}
+				Eigen::MatrixXd h_fem, h_dec, h_opt, h_bndropt, h_decreg;
+				Eigen::SparseMatrix<double> M, M_dec, M_decreg;
+				std::string laplacesavepath = "";
+				if (saveLaplacians) {
+					laplacesavepath = run_folder + run_name  + run_postfix;
+				}
 
-			std::cout << "...write heat vals to file... " << std::endl;
-			std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
-			std::ofstream feil;
-			feil.open(res_out_path);
-			feil << "middle shell indices" << std::endl;
-			for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
-			feil << middleShell[middleShell.size()-1] << std::endl;
-			// -----------------------
-			feil << "h_fem" << "," << "h_dec"; 
-			if (addOpt)         feil << "," << "h_opt";
-			if (addBoundaryOpt) feil << "," << "h_bndropt";
-			if (reg)            feil << "," << "h_decreg";
-			if (includeMass){
-				feil << "," << "M" << "," << "M_dec";
-				if (reg) feil << "," << "M_decreg";
-			}
-			feil << std::endl;
-			for (int r = 0; r < h_fem.rows(); ++r) {
-				feil << h_fem(r) << "," << h_dec(r);
-				if (addOpt)         feil << "," << h_opt(r);
-				if (addBoundaryOpt) feil << "," << h_bndropt(r);
-				if (reg) feil << "," << h_decreg(r);
-				if (includeMass) {
-					feil << "," << M.coeff(r,r) << "," << M_dec.coeff(r,r);
-					if (reg) feil << "," << M_decreg.coeff(r,r);
+				if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_bndropt, h_decreg, M_decreg, laplacesavepath, maxits, removeInner, addOpt, addBoundaryOpt, run_folder + run_name + run_postfix, false)){
+					std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
+					return 1;
+				}
+
+				std::cout << "...write heat vals to file... " << std::endl;
+				std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
+				std::ofstream feil;
+				feil.open(res_out_path);
+				feil << "middle shell indices" << std::endl;
+				for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
+				feil << middleShell[middleShell.size()-1] << std::endl;
+				// -----------------------
+				feil << "h_fem" << "," << "h_dec"; 
+				if (addOpt)         feil << "," << "h_opt";
+				if (addBoundaryOpt) feil << "," << "h_bndropt";
+				if (reg)            feil << "," << "h_decreg";
+				if (includeMass){
+					feil << "," << "M" << "," << "M_dec";
+					if (reg) feil << "," << "M_decreg";
 				}
 				feil << std::endl;
-			}
-			feil.close();
-			std::cout << "Finished the feil" << std::endl;
-			// -----------------------
-			// normalize the heat values:
-			x = normalizeHeatValues(h_fem);
+				for (int r = 0; r < h_fem.rows(); ++r) {
+					feil << h_fem(r) << "," << h_dec(r);
+					if (addOpt)         feil << "," << h_opt(r);
+					if (addBoundaryOpt) feil << "," << h_bndropt(r);
+					if (reg) feil << "," << h_decreg(r);
+					if (includeMass) {
+						feil << "," << M.coeff(r,r) << "," << M_dec.coeff(r,r);
+						if (reg) feil << "," << M_decreg.coeff(r,r);
+					}
+					feil << std::endl;
+				}
+				feil.close();
+				std::cout << "Finished the feil" << std::endl;
+				// -----------------------
+				// normalize the heat values:
+				x = normalizeHeatValues(h_fem);
 
-		}
+			}
+
+
+		} else if (heatdiffusion) {
+
+			std::cout << "HEAT DIFFUSION EXPERIMENT" << std::endl;
+
+			/* ################## HEAT DIFFUSION ################ */
+			if (innerShell.size() < 1 || outerShell.size() < 1) {
+				std::cout << "Heat Diffusion: Error with the shell points, abort." << std::endl;	
+				std::cout << "innerShell.size: " << innerShell.size() << std::endl;	
+				std::cout << "outerShell.size: " << outerShell.size() << std::endl;	
+				// return 1;
+			} else {
+
+				Eigen::MatrixXd h_fem, h_dec, h_opt, h_bndropt, h_decreg;
+				Eigen::SparseMatrix<double> M, M_dec, M_decreg;
+				std::string laplacesavepath = "";
+				if (saveLaplacians) {
+					laplacesavepath = run_folder + run_name  + run_postfix;
+				}
+
+				std::cout << "...solve heat diffusion" << std::endl;
+				double t = 0.005;
+				solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, M, M_dec, M_decreg, t);
+
+				std::cout << "...calc distances to origin" << std::endl;
+				Eigen::VectorXd D;
+				tri.calcDistToPointAllVertices(D, CGAL::ORIGIN);
+				std::cout << "D.size = " << D.size() << std::endl;
+				std::cout << " h_fem.rows() = " << h_fem.rows() << std::endl;
+				std::cout << " h_fem(0) " << h_fem(0) << std::endl;
+				std::cout << " h_dec(0) " << h_dec(0) << std::endl;
+				std::cout << " D(0) " << D(0) << std::endl;
+
+				std::cout << "...write heat vals to file... " << std::endl;
+				std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
+				std::ofstream feil;
+				feil.open(res_out_path);
+				feil << "middle shell indices" << std::endl;
+				for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
+				feil << middleShell[middleShell.size()-1] << std::endl;
+				// -----------------------
+				feil << "h_fem" << "," << "h_dec"; 
+				if (addOpt)         feil << "," << "h_opt";
+				if (addBoundaryOpt) feil << "," << "h_bndropt";
+				if (reg)            feil << "," << "h_decreg";
+				if (includeMass){
+					feil << "," << "M" << "," << "M_dec";
+					if (reg) feil << "," << "M_decreg";
+				}
+				feil << ","<< "pointnorm";
+				feil << std::endl;
+				for (int r = 0; r < h_fem.rows(); ++r) {
+					feil << h_fem(r) << "," << h_dec(r);
+					if (addOpt)         feil << "," << h_opt(r);
+					if (addBoundaryOpt) feil << "," << h_bndropt(r);
+					if (reg) feil << "," << h_decreg(r);
+					if (includeMass) {
+						feil << "," << M.coeff(r,r) << "," << M_dec.coeff(r,r);
+						if (reg) feil << "," << M_decreg.coeff(r,r);
+					}
+					feil << "," << D(r);
+					feil << std::endl;
+				}
+				feil.close();
+				std::cout << "Finished the feil" << std::endl;
+				// -----------------------
+				// normalize the heat values:
+				x = normalizeHeatValues(h_fem);
+
+			}
+
+
+
+		
+		} 
 
 		if (!silent) {
 			/* ################## SHOW  MESH ####################*/

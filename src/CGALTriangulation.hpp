@@ -10,6 +10,10 @@
 #include <vector>
 #include "IndexedTetMesh.hpp"
 
+// only for c3t3
+#include <CGAL/Mesh_triangulation_3.h>
+#include <CGAL/Labeled_mesh_domain_3.h>
+#include <CGAL/Mesh_complex_3_in_triangulation_3.h>
 
 struct edge {
 	std::array<int,2> v;
@@ -62,6 +66,11 @@ public:
 	typedef typename Kernel::Weighted_point_3 WPoint;
 
 
+	// TODO: remove when unused, only needed for c3t3
+	typedef CGAL::Labeled_mesh_domain_3<TKernel> Mesh_domain;
+	typedef typename CGAL::Mesh_triangulation_3<Mesh_domain>::type Tr;
+	typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> C3t3;
+
     
     // actual data is represented here
     Triangulation mesh;
@@ -97,6 +106,11 @@ public:
     // construct the DEC Laplacian for regular Triangulations, optionally together with the circumcentric mass matrix
     void
     DECLaplacianRegular(CGALTriangulation<TKernel>::Regular reg, Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
+
+    // construct the DEC Laplacian for a given c3t3 taken from an optimizer, optionally together with the circumcentric mass matrix
+
+    void
+    DECLaplacianRegular(C3t3 c3t3, Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M = nullptr);
 
     // optimize a laplacian starting from the given weights
     void
@@ -158,6 +172,8 @@ public:
 	calcVolumeAllCells(Eigen::VectorXd &V);
 	void
 	calcAMIPSAllCells(Eigen::VectorXd &E);
+	void
+	calcDistToPointAllVertices(Eigen::VectorXd &D, Point p);
 
 	// performs random flips in the mesh
 	// WARNING: this method resets the cell indices since the cells are changed
