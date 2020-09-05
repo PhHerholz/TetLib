@@ -173,7 +173,13 @@ public:
 	void
 	calcAMIPSAllCells(Eigen::VectorXd &E);
 	void
+	calcContainsCircumcenterFlagAllCells(Eigen::VectorXd &C);
+	void
+	calcIsDelaunayFlagAllCells(Eigen::VectorXd &D);
+	void
 	calcDistToPointAllVertices(Eigen::VectorXd &D, Point p);
+	void
+	calcIsDelaunayFlagAllCells();
 
 	// performs random flips in the mesh
 	// WARNING: this method resets the cell indices since the cells are changed

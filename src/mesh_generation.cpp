@@ -504,12 +504,17 @@ int main(int argc, char *argv[])
 	cell_metrics[minangle]=Minang;
 	cell_metrics[amips]=Amips;
 
+	Eigen::VectorXd Dflags, CCCflags;
+	tri.calcIsDelaunayFlagAllCells(Dflags);
+	tri.calcContainsCircumcenterFlagAllCells(CCCflags);
+
 	// write values to file
 	std::ofstream feil;
 	feil.open("out/" + FILENAME_base + "metrics.csv");
-	feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << std::endl;
+	feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << "," << "delaunayflag,containsccflag" << std::endl;
 	for(int i; i < cell_metrics[volume].size(); i++) {
-		feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) << std::endl;
+		feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) << 
+			"," << Dflags(i) << "," << CCCflags(i) << std::endl;
 	}
 	feil.close();
 

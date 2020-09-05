@@ -98,74 +98,6 @@ loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &inner
 	retrieveShellIndices(tri, innerShell, middleShell, outerShell, originind, maxdist);
 }
 
-void solveHeatProblem_old(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg)
-{
-	//const int cntr = tri.centerVertex();
-	const int n = tri.mesh.number_of_vertices();
-
-	// Construct A 
-	Eigen::SparseMatrix<double> A_fem, A_dec, A_decreg, L_fem, L_dec, L_r, M, M_r;
-
-	if (reg) {
-		std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
-		tri.DECLaplacianRegular(*reg, L_r, &M_r);
-	}
-
-	//tri.massMatrix(M);
-	tri.FEMLaplacian(L_fem);
-
-	// std::cout << "Using Mixed DEC" << std::endl;
-	// tri.DECLaplacianMixed(L_dec, &M);
-	tri.DECLaplacian(L_dec, &M);
-	const double t = tri.meanEdgeLengthSquared();
-	A_fem = M + t * L_fem;
-	A_dec = M - t * L_dec; 
-
-	// solve the constrained problems
-	std::vector<int> constrIndices(outerShell);
-	constrIndices.insert(constrIndices.end(), innerShell.begin(), innerShell.end());
-
-	//constrIndices.push_back(outerShell);
-	//constrIndices.push_back(innerShell);
-
-	Eigen::MatrixXd B(n, 1); B.setZero();
-	Eigen::MatrixXd constrValues(constrIndices.size(), 1);
-	constrValues.setZero();
-	// set inner shell values to 1
-	constrValues.block(outerShell.size(), 0, innerShell.size(), 1) = Eigen::MatrixXd::Ones(innerShell.size(),1);
-
-	std::cout << "SHAPES " <<std::endl;
-	std::cout << constrValues.size() << std::endl;
-	std::cout << B.rows() << ", " << B.cols()  << std::endl;
-	std::cout << "FEM: " << std::endl;
-	std::cout << A_fem.rows() << ", " << A_fem.cols()  << std::endl;
-	std::cout << "DEC: " << std::endl;
-	std::cout << A_dec.rows() << ", " << A_dec.cols()  << std::endl;
-
-	solveConstrainedSymmetric(A_fem, B, constrIndices, constrValues, h_fem);
-	std::cout << h_fem.rows() << ", " << h_fem.cols() << std::endl;
-
-	solveConstrainedSymmetric(A_dec, B, constrIndices, constrValues, h_dec);
-	std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
-
-	if (reg) {	
-		
-		std::cout << "------------------- REG L CHECK ------------------" << std::endl;
-		std::cout << "(L_dec - L_r).squaredNorm(): ";
-		std::cout << (L_dec - L_r).squaredNorm() << std::endl;
-		std::cout << "(L_dec - L_fem).squaredNorm(): ";
-		std::cout << (L_dec - L_fem).squaredNorm() << std::endl;
-		std::cout << "------------------- /REG L CHECK -----------------" << std::endl;
-
-
-		A_decreg = M_r - t * L_r;
-		std::cout << "DECreg: " << std::endl;
-		std::cout << A_decreg.rows() << ", " << A_decreg.cols()  << std::endl;
-		solveConstrainedSymmetric(A_decreg, B, constrIndices, constrValues, h_decreg);
-		std::cout << h_dec.size() << ", " << h_dec.cols() << std::endl;
-	}
-}
-
 void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M, Eigen::SparseMatrix<double>& M_dec, Eigen::SparseMatrix<double>& M_decreg, double t=-1)
 {
 	//const int cntr = tri.centerVertex();
@@ -198,6 +130,7 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 		b_base(i) = 1.;
 	}
 
+	std::cout << "innerShell.size(): " << innerShell.size() << std::endl;
 	std::cout << "start solve" << std::endl;
 
 	// Solve FEM
@@ -214,12 +147,14 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
     chol_dec.factorize(A_dec);
     h_dec = chol_dec.solve(B_dec);
 
-	/*
 	if (reg) {	
-		A_decreg = M_r - t * L_r;
-		// TODO: implement
+		A_decreg = M_decreg - t * L_r;
+		Eigen::MatrixXd B_reg = b_base; // M_dec * b_base;
+		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_reg;
+		chol_reg.analyzePattern(A_decreg);
+		chol_reg.factorize(A_decreg);
+		h_decreg = chol_reg.solve(B_reg);
 	}
-	*/
 }
 
 bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std::vector<int> ignoreIndices) {
@@ -612,8 +547,9 @@ int main(int argc, char *argv[])
 
 	double boundaryCellMinVol = 0.;
 
+	double heat_timestep= 0.005;
 	if (argc >= 5) {
-		boundaryCellMinVol = std::stod(argv[4]);
+		heat_timestep = std::stod(argv[4]);
 	}
 
 	if (argc >= 6) {
@@ -834,14 +770,19 @@ int main(int argc, char *argv[])
 		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
 		cellcolors[amips] = cellcolors_amips;
 
+		Eigen::VectorXd Dflags, CCCflags;
+		tri.calcIsDelaunayFlagAllCells(Dflags);
+		tri.calcContainsCircumcenterFlagAllCells(CCCflags);
+
 		if (regnoise >= 0) {
 			// write values to file again (reg might have changed them)
 			std::ofstream feil;
 			std::string metrics_out_path = run_folder + run_name + run_postfix + "metrics.csv";
 			feil.open(metrics_out_path);
-			feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << std::endl;
+			feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << "," << "delaunayflag,containsccflag" << std::endl;
 			for(int i; i < cell_metrics[volume].size(); i++) {
-				feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) << std::endl;
+				feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) <<
+					"," << Dflags(i) << "," << CCCflags(i) << std::endl;
 			}
 			feil.close();
 		}
@@ -930,8 +871,8 @@ int main(int argc, char *argv[])
 				}
 
 				std::cout << "...solve heat diffusion" << std::endl;
-				double t = 0.005;
-				solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, M, M_dec, M_decreg, t);
+				//double t = 0.001;// 0.005;
+				solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, M, M_dec, M_decreg, heat_timestep);
 
 				std::cout << "...calc distances to origin" << std::endl;
 				Eigen::VectorXd D;

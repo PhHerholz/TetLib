@@ -1855,6 +1855,64 @@ CGALTriangulation<TKernel>::calcVolumeAllCells(Eigen::VectorXd &V) {
 	std::cout << std::endl;
 }
 
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::calcContainsCircumcenterFlagAllCells(Eigen::VectorXd &C){
+    int N = mesh.number_of_finite_cells();
+	C.resize(N);
+	C.setZero();
+
+    for(auto h : mesh.finite_cell_handles()){
+        auto tet = mesh.tetrahedron(h);
+		Point cc = CGAL::circumcenter(tet);
+        const int cid = h->info();
+	
+		bool ccc = true; // contains circumcenter
+        for(int i = 0; i < 4; ++i)
+		{
+			if (!ccc) break;
+            for(int j = i+1; j < 4; ++j)
+            {
+				if (!ccc) break;
+				// face(i,j,k)
+                const int k = Triangulation::next_around_edge(i, j);
+                const int l = Triangulation::next_around_edge(j, i);
+				if (!tet.has_on_bounded_side(cc)){
+					ccc = false;
+				}
+			}	
+		}
+		C(cid) = (ccc)?1:0;
+	}
+}
+
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::calcIsDelaunayFlagAllCells(Eigen::VectorXd &D){
+
+    int N = mesh.number_of_finite_cells();
+	D.resize(N);
+	D.setZero();
+
+    for(auto h : mesh.finite_cell_handles()){
+        auto tet = mesh.tetrahedron(h);
+		Point cc = CGAL::circumcenter(tet);
+		double radsq = CGAL::squared_distance(cc, tet[0]);
+        const int cid = h->info();
+	
+		bool del = true; // is delaunay tet flag
+		for (auto vh: mesh.finite_vertex_handles()) {
+			if (h->has_vertex(vh)) break; // point is part of the tet
+			if (CGAL::squared_distance(cc, vh->point()) < radsq) {
+				del = false;	
+				break;
+			}
+		}
+		D(cid) = (del)?1:0;
+	}
+}
+
 
 template<class TKernel>
 void
