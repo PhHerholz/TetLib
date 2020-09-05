@@ -15,8 +15,11 @@
 #include "CGALTriangulation.hpp"
 #include "Timer.hpp"
 
+
 #include <unordered_map>
 
+#include <cxxabi.h>
+ 
 namespace internal
 {
     template<class Kernel, class TMesh>
@@ -275,7 +278,7 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweig
   
 	if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
 	if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
-	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
+	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=0, time_limit=0); //sliver_bound=10, time_limit=10);
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
 
@@ -313,7 +316,7 @@ public:
 
 template<class TKernel>
 void 
-meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath)
+meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath, std::string decreglaplacianoutpath)
 {
 	using namespace CGAL::parameters;
 	// Domain
@@ -377,16 +380,17 @@ meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string r
 
 	Facet_criteria facet_criteria(30, mOptions.facet_size, mOptions.approx_val); // angle, size, approximation
 	
-	non_symmetric_sizing_field size(mOptions.cell_size, mOptions.minSize);
-
-	Cell_criteria cell_criteria(mOptions.cell_radius_edge_ratio, (mOptions.use_sizing_field)? size : mOptions.cell_size); // radius-edge ratio, size
+	//non_symmetric_sizing_field size(mOptions.cell_size, mOptions.minSize);
+	//std::cout << "USE SIZING FILED: " << ((mOptions.use_sizing_field) ? "Ja" : "Nein")  << std::endl;
+	//auto sz =  (mOptions.use_sizing_field)? size : mOptions.cell_size;
+	Cell_criteria cell_criteria(mOptions.cell_radius_edge_ratio, mOptions.cell_size); // radius-edge ratio, size
 	Mesh_criteria criteria(facet_criteria, cell_criteria);
 
 	// Mesh generation
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, no_exude(), no_perturb());
 	if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
 	if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
-	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
+	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=0, time_limit=0); // sliver_bound=10, time_limit=10
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
 
@@ -400,6 +404,24 @@ meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string r
 			regweightsfile << it->point().weight() << std::endl; 
         }
 		regweightsfile.close();
+	}
+
+	// test the laplace calc
+	if (!decreglaplacianoutpath.empty()) {
+		std::cout << "calc dec laplacian regular from c3t3" << std::endl;	
+		Eigen::SparseMatrix<double> L, M; 
+
+		/*
+		int status;
+		char* realname;
+		realname = abi::__cxa_demangle(c3t3.name(), 0, 0, &status);
+		std::cout << c3t3.name() << "\t=> " << realname << "\t: " << status << '\n';
+		free(realname);
+		*/
+		
+		calcDECLaplacianRegularFromC3t3<TKernel>(c3t3,L,&M);
+		Eigen::saveMarket(L, decreglaplacianoutpath + "Loptimized.mtx");
+		Eigen::saveMarket(M, decreglaplacianoutpath + "Moptimized.mtx");
 	}
 }
 
@@ -470,7 +492,7 @@ meshEmbeddedDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::
 	};
 
 	Facet_criteria facet_criteria(30, mOptions.facet_size, mOptions.approx_val); // angle, size, approximation
-	std::cout << "use sizing field: " << mOptions.use_sizing_field << std::endl;
+	//std::cout << "use sizing field: " << mOptions.use_sizing_field << std::endl;
 	//std::cout << "used: " (mOptions.use_sizing_field)? "ja":"nein" << std::endl;
 
 	//non_symmetric_sizing_field size(mOptions.cell_size, mOptions.minSize);
@@ -481,7 +503,7 @@ meshEmbeddedDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, no_exude(), no_perturb());
 	if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
 	if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
-	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
+	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=0, time_limit=0); //sliver_bound=10, time_limit=10);
 
     indexed = ::internal::extractIndexed<TKernel>(c3t3);
 
@@ -569,7 +591,7 @@ meshSingleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string r
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, no_exude(), no_perturb());
 	if (mOptions.opt_lloyd)   CGAL::lloyd_optimize_mesh_3(c3t3, domain, time_limit=30);
 	if (mOptions.opt_perturb) CGAL::perturb_mesh_3(c3t3, domain, time_limit=15);
-	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3, sliver_bound=10, time_limit=10);
+	if (mOptions.opt_exude)   CGAL::exude_mesh_3(c3t3,sliver_bound=0, time_limit=0); //sliver_bound=10, time_limit=10);
 	
 	double maxdist = 0;
 	for (auto vh : c3t3.triangulation().finite_vertex_handles()) {
@@ -610,10 +632,10 @@ meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string
 
 template<class TKernel2, class TKernel>
 void
-meshDoubleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath)
+meshDoubleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath, std::string decreglaplacianoutpath)
 {
     IndexedTetMesh indexed;
-    meshDoubleSphere<TKernel2>(indexed, mOptions, regweightsoutpath);
+    meshDoubleSphere<TKernel2>(indexed, mOptions, regweightsoutpath, decreglaplacianoutpath);
     indexed.convert(tri);
 }
 
@@ -635,3 +657,211 @@ meshSingleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::
     indexed.convert(tri);
 }
 
+template<class TKernel>
+void
+calcDECLaplacianRegularFromC3t3(
+		//CGAL::Mesh_complex_3_in_triangulation_3<CGAL::Mesh_triangulation_3<CGAL::Labeled_mesh_domain_3<TKernel>>> c3t3,
+		CGAL::Mesh_complex_3_in_triangulation_3<CGAL::Mesh_3_regular_triangulation_3_wrapper<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Triangulation_data_structure_3<CGAL::Mesh_vertex_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Labeled_mesh_domain_3<CGAL::Epick, int, std::pair<int, int> >, CGAL::Regular_triangulation_vertex_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Triangulation_ds_vertex_base_3<void> > >, CGAL::Compact_mesh_cell_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Labeled_mesh_domain_3<CGAL::Epick, int, std::pair<int, int> >, void>, CGAL::Sequential_tag> >, int, int> c3t3,
+		Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M)
+{
+
+	typedef CGAL::Labeled_mesh_domain_3<TKernel> Mesh_domain;
+	typedef typename CGAL::Mesh_triangulation_3<Mesh_domain>::type Tr;
+	typedef CGAL::Mesh_complex_3_in_triangulation_3<Tr> C3t3;
+
+	typedef typename TKernel::Point_3 Point;
+	typedef typename TKernel::Plane_3 Plane;
+	typedef typename TKernel::Line_3  Line;
+	typedef typename TKernel::Segment_3  Segment;
+
+    std::vector<Eigen::Triplet<double>> triplets;
+    const int nv = c3t3.triangulation().number_of_vertices();
+
+	// id Map to  store to get the vertex indices withouth a ->info() construct
+    auto& tr = c3t3.triangulation();
+	std::map<typename C3t3::Vertex_handle, unsigned> idMap;
+	unsigned cnt = 0;
+	for(auto it = tr.finite_vertices_begin(); it != tr.finite_vertices_end(); ++it)
+	{
+		idMap[it] = cnt++;
+	}
+
+    
+    // turn off some costly sanity tests
+    bool dbg = true;
+	bool dbg2 = false;
+    bool dbg3 = false;
+    
+    std::vector<typename TKernel::Vector_3> vecs(nv);
+    
+    if(M)
+    {
+        M->resize(nv, nv);
+        M->resizeNonZeros(nv);
+        
+        for(int i = 0; i < nv; ++i)
+        {
+            M->outerIndexPtr()[i] = i;
+            M->innerIndexPtr()[i] = i;
+            M->valuePtr()[i] = .0;
+        }
+        
+        M->outerIndexPtr()[nv] = nv;
+    }
+    
+    //for(auto h : reg.finite_cell_handles())
+    for(auto h =  c3t3.cells_in_complex_begin(); h !=  c3t3.cells_in_complex_end(); ++h)
+    {
+        auto tet = c3t3.triangulation().tetrahedron(h);
+        double vol = tet.volume();
+        
+        for(int i = 0; i < 4; ++i)
+            for(int j = 0; j < 4; ++j)
+            if( i != j )
+            {
+                const int k = Tr::next_around_edge(i, j);
+                const int l = Tr::next_around_edge(j, i);
+
+				auto tet_dual  = c3t3.triangulation().dual(h);
+				auto face_dual_res = c3t3.triangulation().dual(h, l); // facet (tet[i], tet[j], tet[k]);
+				Segment face_dual;
+				assign(face_dual, face_dual_res);
+
+				// auto ccf = CGAL::circumcenter(tet[i], tet[j], tet[k]);
+
+				Line  fd_line   = face_dual.supporting_line();
+				Plane tri_plane(tet[i], tet[j], tet[k]);
+				auto ccf_res = intersection(tri_plane, fd_line);
+				auto ccf = boost::get<Point>(&*ccf_res);
+
+				// auto cce = CGAL::circumcenter(tet[i], tet[j]);
+				auto edge = tet[j] - tet[i];
+				Line edge_line(tet[i], edge);
+				Plane dual_plane(tet_dual, edge);
+				//auto cce = intersection(dual_plane, edge_line);
+				
+				// access point directly since intersection cannot be a line in this case
+				auto cce_res = intersection(dual_plane, edge_line);
+				auto cce = boost::get<Point>(&*cce_res);
+
+				auto edge_normalized = edge / sqrt(edge.squared_length());
+				Point cce_const = CGAL::ORIGIN + (edge_normalized * (tet_dual - tet[i])) * edge_normalized;
+
+				//std::cout << "Calced" << std::endl;
+
+				// ----------------------------------------------
+				// construct ccf hopefully correctly?
+				double tri_area = 0.5 * sqrt(CGAL::cross_product(tet[j] - tet[i], tet[k] - tet[i]).squared_length());
+
+				Point ccf_const = tet[i]; 
+				// contrib of point k
+				auto e_k = (tet[j] - tet[i]) / sqrt((tet[j]-tet[i]).squared_length());
+				auto normal_k   = tet[k] - (tet[i] + e_k * ((tet[k]- tet[i]) * e_k));
+				normal_k = normal_k / sqrt(normal_k.squared_length()) * sqrt((tet[j] - tet[i]).squared_length());
+				ccf_const += (((tet[k] - tet[i]).squared_length() + h->vertex(i)->point().weight() - h->vertex(k)->point().weight()) * normal_k) / (4. * tri_area) ; 
+				//contrib of point j
+				auto e_j = (tet[k] - tet[i]) / sqrt((tet[k]-tet[i]).squared_length());
+				auto normal_j   = tet[j] - (tet[i] + e_j * ((tet[j]- tet[i]) * e_j));
+				normal_j = normal_j / sqrt(normal_j.squared_length()) * sqrt((tet[k] - tet[i]).squared_length());
+				ccf_const += (((tet[j] - tet[i]).squared_length() + h->vertex(i)->point().weight() - h->vertex(j)->point().weight()) * normal_j) / (4. * tri_area); 
+
+				//auto nrml_const = 0.5 * CGAL::cross_product(ccf_const - cce_const, tet_dual - cce_const); 
+				auto nrml_const = 0.5 * CGAL::cross_product(ccf_const - *cce, tet_dual - *cce);
+				double val = (nrml_const * edge) / edge.squared_length();
+				// ----------------------------------------------
+                const int r = idMap[h->vertex(i)]; // h->vertex(i)->info();
+                const int s = idMap[h->vertex(j)];// h->vertex(j)->info();
+            
+                if(M)
+                {
+					// TODO: eddge.squared_length the correct thing here?
+                    M->valuePtr()[r] += val * (edge.squared_length()) / 6.;
+                    M->valuePtr()[s] += val * (edge.squared_length()) / 6.;
+                }
+
+				if (dbg2) {
+					// compare with non-weighte circumcenter calls (only makes sense if weights are all 0)
+                    auto cc_nr  = CGAL::circumcenter(tet);
+                    auto ccf_nr = CGAL::circumcenter(tet[i], tet[j], tet[k]);
+                    auto cce_nr = CGAL::circumcenter(tet[i], tet[j]);
+            
+                    auto nrml_nr = 0.5 * CGAL::cross_product(ccf_nr - cce_nr, cc_nr - cce_nr);
+                    double val2 = (nrml_nr * edge) / edge.squared_length();
+
+					Point cce_const = tet[i] + 0.5 * (edge.squared_length() + h->vertex(i)->point().weight() - h->vertex(j)->point().weight()) * (edge / sqrt(edge.squared_length()));
+
+					if (std::abs(val - val2) > 1e-13) {
+
+						std::cout << std::endl << "Val  : " << val << std::endl;
+						std::cout << "Val2 : " << val2 << std::endl;
+						std::cout << "CC  - CC_nr  = " << tet_dual - cc_nr << std::endl;
+						std::cout << "CCF - CCF_nr = " << *ccf - ccf_nr << std::endl;
+						std::cout << "CCE - CCE_nr = " << *cce - cce_nr << std::endl;
+
+						std::cout << std::endl;
+						std::cout << "CCF      : " << *ccf      << std::endl;
+						std::cout << "CCF_nr   : " << ccf_nr    << std::endl;
+						std::cout << "ccf_const: " << ccf_const << std::endl;
+
+						std::cout << std::endl;
+						std::cout << "CCE       : " << *cce      << std::endl;
+						std::cout << "CCE_nr    : " << cce_nr    << std::endl;
+						std::cout << "CCE_const : " << cce_const << std::endl;
+
+					}
+
+                }
+
+				if (dbg3) {
+					// compare to phillipps dec impl (only makes sense if weights are all 0)
+					
+					auto a2 = tet[i] - tet[l];
+					auto b = tet[j] - tet[l];
+					auto c = tet[k] - tet[l];
+					
+					auto b2 = tet[i] - tet[k];
+					auto c2 = tet[j] - tet[i];
+					auto a =  tet[k] - tet[j];
+					
+					 
+					const double n = (a * b2) * (b2 * c2) * (c * a2) + (b2 * c2) * (c2 * a) * (a2 * b)
+					+ (c2 * a) * (a * b2) * (b * c) + (a * b2) * (b2 * c2) * (c2 * a);
+				  
+					const double d = 192 * vol * 0.25 * CGAL::cross_product(b2, a).squared_length();
+					const double fac = std::abs(d) < 1e-24 ? .0 : 1. / d;
+					const double val3 = -n * (a * b2) * fac;
+
+					
+					if (std::abs(val - val3) > 1e-13) {
+						std::cout << "ERROR: " << val << "!= " << val3 << std::endl;
+					}
+				}
+
+				if (r > nv) {
+					std::cout << "r " << r << " OUT!!!!!!" << std::endl;	
+				}
+				if (s > nv) {
+					std::cout << "s " << s << " OUT!!!!!!" << std::endl;	
+				}
+
+                triplets.emplace_back(r, r, -val);
+                triplets.emplace_back(s, s, -val);
+                    
+                triplets.emplace_back(r, s, val);
+                triplets.emplace_back(s, r, val);
+
+				/*
+				if(std::abs(val - val2) > 1e-10) std::cout << "error: " << val << " " << val2 << std::endl;
+			  
+				vecs[r] += nrml;
+				vecs[s] -= nrml;
+				*/
+
+            }
+    }
+    
+   
+    L.resize(nv, nv);
+    L.setFromTriplets(triplets.begin(), triplets.end());
+
+}

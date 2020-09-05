@@ -365,6 +365,7 @@ int main(int argc, char *argv[])
 	mOptions.cell_size              = std::stod(argv[1]);
 	if (atoi(argv[2])) silent = false;
 	std::string regweightssavepath = "";
+	std::string decregoutpath     = "";
 
 	int spheretype = 3; // 0: doublesphere, 1: singlesphere, 2: embeddeddoublesphere 3: originsphere
 	//bool singleSphere = false; // works for facet_size = 1., approx_val = 0.0067;
@@ -406,8 +407,9 @@ int main(int argc, char *argv[])
 		if (atoi(argv[6])){
 			std::cout << "WRITE OUT REG WEIGHTS" << std::endl;
 			regweightssavepath = "out/" + FILENAME_base + "_regweights.csv";
+			decregoutpath      = "out/" + FILENAME_base + "_decreg";
 			mOptions.opt_lloyd   = true;
-			//mOptions.opt_perturb = true;
+			mOptions.opt_perturb = true;
 			mOptions.opt_exude   = true;
 		}
 	}
@@ -436,7 +438,7 @@ int main(int argc, char *argv[])
 	} else if (spheretype == 3) {
 		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
 	} else {
-		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
+		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath, decregoutpath);
 	}
 
 	int origin_ind = -1;
