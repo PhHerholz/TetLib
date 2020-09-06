@@ -52,11 +52,16 @@ void
 meshSingleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath="");
 
 // DEC LAPLACIAN with from power diagram of a c3t3
+
+
+template<class TKernel>
+using C3T3T = CGAL::Mesh_complex_3_in_triangulation_3<CGAL::Mesh_3_regular_triangulation_3_wrapper<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Triangulation_data_structure_3<CGAL::Mesh_vertex_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Labeled_mesh_domain_3<CGAL::Epick, int, std::pair<int, int> >, CGAL::Regular_triangulation_vertex_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Triangulation_ds_vertex_base_3<void> > >, CGAL::Compact_mesh_cell_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Labeled_mesh_domain_3<CGAL::Epick, int, std::pair<int, int> >, void>, CGAL::Sequential_tag> >, int, int>; 
+
 template<class TKernel>
 void 
 calcDECLaplacianRegularFromC3t3(
 		//CGAL::Mesh_complex_3_in_triangulation_3<CGAL::Mesh_triangulation_3<CGAL::Labeled_mesh_domain_3<TKernel>>> c3t3,
-		CGAL::Mesh_complex_3_in_triangulation_3<CGAL::Mesh_3_regular_triangulation_3_wrapper<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Triangulation_data_structure_3<CGAL::Mesh_vertex_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Labeled_mesh_domain_3<CGAL::Epick, int, std::pair<int, int> >, CGAL::Regular_triangulation_vertex_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Triangulation_ds_vertex_base_3<void> > >, CGAL::Compact_mesh_cell_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Labeled_mesh_domain_3<CGAL::Epick, int, std::pair<int, int> >, void>, CGAL::Sequential_tag> >, int, int> c3t3,
+		C3T3T<TKernel> c3t3,
 		Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M);
 
 #include "CGALMeshPolyhedron_impl.h"

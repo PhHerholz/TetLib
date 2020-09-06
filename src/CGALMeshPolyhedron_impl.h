@@ -420,8 +420,8 @@ meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string r
 		*/
 		
 		calcDECLaplacianRegularFromC3t3<TKernel>(c3t3,L,&M);
-		Eigen::saveMarket(L, decreglaplacianoutpath + "Loptimized.mtx");
-		Eigen::saveMarket(M, decreglaplacianoutpath + "Moptimized.mtx");
+		Eigen::saveMarket(L, decreglaplacianoutpath + "decregLoptimized.mtx");
+		Eigen::saveMarket(M, decreglaplacianoutpath + "decregMoptimized.mtx");
 	}
 }
 
@@ -657,11 +657,12 @@ meshSingleSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::
     indexed.convert(tri);
 }
 
+
 template<class TKernel>
 void
 calcDECLaplacianRegularFromC3t3(
 		//CGAL::Mesh_complex_3_in_triangulation_3<CGAL::Mesh_triangulation_3<CGAL::Labeled_mesh_domain_3<TKernel>>> c3t3,
-		CGAL::Mesh_complex_3_in_triangulation_3<CGAL::Mesh_3_regular_triangulation_3_wrapper<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Triangulation_data_structure_3<CGAL::Mesh_vertex_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Labeled_mesh_domain_3<CGAL::Epick, int, std::pair<int, int> >, CGAL::Regular_triangulation_vertex_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Triangulation_ds_vertex_base_3<void> > >, CGAL::Compact_mesh_cell_base_3<CGAL::Robust_weighted_circumcenter_filtered_traits_3<CGAL::Epick>, CGAL::Labeled_mesh_domain_3<CGAL::Epick, int, std::pair<int, int> >, void>, CGAL::Sequential_tag> >, int, int> c3t3,
+		C3T3T<TKernel> c3t3,
 		Eigen::SparseMatrix<double>& L, Eigen::SparseMatrix<double>* M)
 {
 
@@ -712,7 +713,7 @@ calcDECLaplacianRegularFromC3t3(
     //for(auto h : reg.finite_cell_handles())
     for(auto h =  c3t3.cells_in_complex_begin(); h !=  c3t3.cells_in_complex_end(); ++h)
     {
-        auto tet = c3t3.triangulation().tetrahedron(h);
+        auto tet = tr.tetrahedron(h);
         double vol = tet.volume();
         
         for(int i = 0; i < 4; ++i)
@@ -722,8 +723,8 @@ calcDECLaplacianRegularFromC3t3(
                 const int k = Tr::next_around_edge(i, j);
                 const int l = Tr::next_around_edge(j, i);
 
-				auto tet_dual  = c3t3.triangulation().dual(h);
-				auto face_dual_res = c3t3.triangulation().dual(h, l); // facet (tet[i], tet[j], tet[k]);
+				auto tet_dual  = tr.dual(h);
+				auto face_dual_res = tr.dual(h, l); // facet (tet[i], tet[j], tet[k]);
 				Segment face_dual;
 				assign(face_dual, face_dual_res);
 
@@ -859,7 +860,6 @@ calcDECLaplacianRegularFromC3t3(
 
             }
     }
-    
    
     L.resize(nv, nv);
     L.setFromTriplets(triplets.begin(), triplets.end());
