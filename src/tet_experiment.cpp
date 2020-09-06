@@ -92,9 +92,10 @@ loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &inner
 	double maxdist=0.;
 	for (auto vh: tri.mesh.finite_vertex_handles()) {
 		double dist = sqrt(CGAL::squared_distance(vh->point(), Point(CGAL::ORIGIN)));		
-		if (dist < maxdist) maxdist = dist;
+		if (dist > maxdist) maxdist = dist;
 	}
 
+	std::cout << "MAXDIST: " << maxdist << std::endl;
 	retrieveShellIndices(tri, innerShell, middleShell, outerShell, originind, maxdist);
 }
 
@@ -178,15 +179,27 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 		LV.row(i).setZero();
 	}
 
+	std::cout << "LV.sum() = " << LV.sum() << std::endl;
 	if (LV.norm() > 1e-7) {
 		std::cout << "Linear Precision Error !! " << std::endl;
 		std::cout << "LV.norm= " << LV.norm() << std::endl;
-		return false;
+		std::cout << "Problemrows: ";
+		int cnt = 0;
+		for (int i=0; i<LV.rows(); ++i) {
+			double rowsum = LV.row(i).sum(); 
+			if (rowsum> 1e-7) {
+				std::cout << i << ": " << rowsum << ", ";	
+				cnt++;
+			}
+		}
+		std::cout << std::endl;
+		std::cout << "Total of " << cnt << "problematic rows" << std::endl;
+		//return false;
 	}
 	return true;
 }
 
-bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_bndropt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool ignoreInner, bool addOpt, bool addBoundaryOpt, std::string traininglogfilebase, bool useMassMatrices)
+bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> middleShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::SparseMatrix<double>& M, Eigen::MatrixXd& h_dec,Eigen::SparseMatrix<double>& M_dec, Eigen::MatrixXd& h_opt, Eigen::MatrixXd& h_bndropt, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M_decreg, std::string laplaceSavePath, int maxits, bool ignoreInner, bool addOpt, bool addBoundaryOpt, std::string traininglogfilebase, bool useMassMatrices, std::string reglaplaceloadpath)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -194,9 +207,21 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 	// Construct A 
 	Eigen::SparseMatrix<double> A_fem, A_dec, A_opt, A_bndropt, A_decreg, L_fem, L_dec, L_opt, L_bndropt, L_r; 
 
-	if (reg) {
-		std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
-		tri.DECLaplacianRegular(*reg, L_r, &M_decreg);
+	bool useregular = (reg || !reglaplaceloadpath.empty());
+
+	if (useregular) {
+		if (!reglaplaceloadpath.empty()) {
+			std::cout << "Regpath given, load decreg L and M from file" << std::endl;
+			std::cout << "path: " << reglaplaceloadpath << std::endl;
+			Eigen::loadMarket(L_r,      reglaplaceloadpath + "decregLoptimized.mtx");
+			Eigen::loadMarket(M_decreg, reglaplaceloadpath + "decregMoptimized.mtx");
+
+			//std::cout << "L_r.shape = " << L_r.rows() << "," << L_r.cols() << std::endl;
+			//std::cout << "L_r.shape = " << M_decreg.rows() << "," << M_decreg.cols() << std::endl;
+		} else {
+			std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
+			tri.DECLaplacianRegular(*reg, L_r, &M_decreg);
+		}
 	}
 
 	tri.massMatrix(M);
@@ -235,7 +260,7 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 		if (addOpt) {
 			Eigen::saveMarket( L_opt, laplaceSavePath + "_Lopt.mtx");
 		}
-		if (reg) {
+		if (useregular) {
 			Eigen::saveMarket(L_r, laplaceSavePath + "_Lreg.mtx");
 		}
 		if (addBoundaryOpt) {
@@ -344,11 +369,16 @@ bool solveDirichletProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Ker
 			if (!checkLP(tri, L_opt, ignoreIndices)) return false;
 			std::cout << "...done" << std::endl;
 		}
+		if (useregular) {
+			std::cout << " DECREG: " << std::endl;
+			if (!checkLP(tri, L_r, ignoreIndices)) return false;
+			std::cout << "...done" << std::endl;
+		}
 		std::cout << "--------- /LP TEST ---------" << std::endl;
 	}
 
 
-	if (reg) {	
+	if (useregular) {	
 		
 		std::cout << "------------------- REG L CHECK ------------------" << std::endl;
 		std::cout << "(L_dec - L_r).squaredNorm(): ";
@@ -509,8 +539,8 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	bool heatdiffusion = true;
-	bool dirichlet     = false;
+	bool heatdiffusion = false;
+	bool dirichlet     = true;
 
 	double regnoise;
 	std::string run_postfix = "";
@@ -528,7 +558,7 @@ int main(int argc, char *argv[])
 
 	bool meshwrite      = false;
 	bool regwrite       = false;
-	bool saveLaplacians = false;
+	bool saveLaplacians = true ;
 	bool output_mel     = false;
 	bool meshwrite_only = false;
 	regnoise = -1;
@@ -705,7 +735,7 @@ int main(int argc, char *argv[])
 				regweightsfile.close();
 			}
 
-		} else if (regnoise == -2.) {
+		} /*else if (regnoise == -2.) {
 			// load reg tri with weights from file
 
 			std::string regfilepath = run_folder + run_name + "_regweights.csv";
@@ -713,6 +743,7 @@ int main(int argc, char *argv[])
 			reg    = &regtri;
 		
 		}
+		*/
 
 		if (output_mel) {
 			std::ofstream melFile;
@@ -805,11 +836,15 @@ int main(int argc, char *argv[])
 				Eigen::MatrixXd h_fem, h_dec, h_opt, h_bndropt, h_decreg;
 				Eigen::SparseMatrix<double> M, M_dec, M_decreg;
 				std::string laplacesavepath = "";
+				std::string regloadpath = "";
 				if (saveLaplacians) {
 					laplacesavepath = run_folder + run_name  + run_postfix;
 				}
+				if (regnoise == -2) {
+					regloadpath  = run_folder + run_name;
+				}
 
-				if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_bndropt, h_decreg, M_decreg, laplacesavepath, maxits, removeInner, addOpt, addBoundaryOpt, run_folder + run_name + run_postfix, false)){
+				if (!solveDirichletProblem(tri, reg, innerShell, middleShell, outerShell, h_fem, M, h_dec, M_dec, h_opt, h_bndropt, h_decreg, M_decreg, laplacesavepath, maxits, removeInner, addOpt, addBoundaryOpt, run_folder + run_name + run_postfix, false, regloadpath)){
 					std::cout << "Error in Dirichlet Problem solving for " << run_name + run_postfix << std::endl;	
 					return 1;
 				}
@@ -825,20 +860,20 @@ int main(int argc, char *argv[])
 				feil << "h_fem" << "," << "h_dec"; 
 				if (addOpt)         feil << "," << "h_opt";
 				if (addBoundaryOpt) feil << "," << "h_bndropt";
-				if (reg)            feil << "," << "h_decreg";
+				if (reg || regnoise == -2)            feil << "," << "h_decreg";
 				if (includeMass){
 					feil << "," << "M" << "," << "M_dec";
-					if (reg) feil << "," << "M_decreg";
+					if (reg || regnoise == -2) feil << "," << "M_decreg";
 				}
 				feil << std::endl;
 				for (int r = 0; r < h_fem.rows(); ++r) {
 					feil << h_fem(r) << "," << h_dec(r);
 					if (addOpt)         feil << "," << h_opt(r);
 					if (addBoundaryOpt) feil << "," << h_bndropt(r);
-					if (reg) feil << "," << h_decreg(r);
+					if (reg || regnoise == -2) feil << "," << h_decreg(r);
 					if (includeMass) {
 						feil << "," << M.coeff(r,r) << "," << M_dec.coeff(r,r);
-						if (reg) feil << "," << M_decreg.coeff(r,r);
+						if (reg || regnoise == -2) feil << "," << M_decreg.coeff(r,r);
 					}
 					feil << std::endl;
 				}
@@ -846,7 +881,7 @@ int main(int argc, char *argv[])
 				std::cout << "Finished the feil" << std::endl;
 				// -----------------------
 				// normalize the heat values:
-				x = normalizeHeatValues(h_fem);
+				x = normalizeHeatValues(h_decreg);
 
 			}
 
