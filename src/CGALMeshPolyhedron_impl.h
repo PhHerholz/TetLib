@@ -678,15 +678,19 @@ calcDECLaplacianRegularFromC3t3(
     std::vector<Eigen::Triplet<double>> triplets;
     const int nv = c3t3.triangulation().number_of_vertices();
 
+    Eigen::MatrixXd V(nv, 3);
+
 	// id Map to  store to get the vertex indices withouth a ->info() construct
     auto& tr = c3t3.triangulation();
 	std::map<typename C3t3::Vertex_handle, unsigned> idMap;
 	unsigned cnt = 0;
 	for(auto it = tr.finite_vertices_begin(); it != tr.finite_vertices_end(); ++it)
 	{
+		V(cnt, 0) = it->point().x();
+		V(cnt, 1) = it->point().y();
+		V(cnt, 2) = it->point().z();
 		idMap[it] = cnt++;
 	}
-
     
     // turn off some costly sanity tests
     bool dbg = true;
@@ -710,7 +714,7 @@ calcDECLaplacianRegularFromC3t3(
         M->outerIndexPtr()[nv] = nv;
     }
     
-    //for(auto h : reg.finite_cell_handles())
+    //for(auto h : tr.finite_cell_handles())
     for(auto h =  c3t3.cells_in_complex_begin(); h !=  c3t3.cells_in_complex_end(); ++h)
     {
         auto tet = tr.tetrahedron(h);
@@ -863,5 +867,35 @@ calcDECLaplacianRegularFromC3t3(
    
     L.resize(nv, nv);
     L.setFromTriplets(triplets.begin(), triplets.end());
+
+	bool lpdbg = false;
+	if (lpdbg) 
+	{
+
+		Eigen::MatrixXd LV = L * V;
+		for(auto it = tr.finite_vertices_begin(); it != tr.finite_vertices_end(); ++it)
+		{
+			std::vector<typename C3t3::Vertex_handle> adj;
+			tr.adjacent_vertices(it, std::back_inserter(adj));
+			bool adjtoinf=false;
+			for (auto h: adj) {
+				if (tr.is_infinite(h)) {
+					adjtoinf=true;
+				}	
+			}
+			if (adjtoinf) {
+				LV.row(idMap[it]).setZero();
+			}
+		}
+		std::cout << "LP Test: LV.norm = " << LV.norm() << std::endl;
+
+		for (int i=0; i < nv; i++) {
+			if (L.coeff(i,i) == 0) {
+				std::cout << "zerodiagentry at " << i << std::endl;	
+			}
+		}
+
+	}
+
 
 }
