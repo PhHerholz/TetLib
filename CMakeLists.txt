@@ -18,7 +18,7 @@ find_package(LIBIGL REQUIRED QUIET)
 
 
 file(GLOB LIB_SOURCES src/*.cpp )
-list(REMOVE_ITEM LIB_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh_generation.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/tet_experiment.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh_viewer.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/boundary_example.cpp")
+list(REMOVE_ITEM LIB_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh_generation.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/tet_experiment.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh_viewer.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/playground.cpp")
 
 message(${LIB_SOURCES})
 
@@ -35,6 +35,6 @@ target_link_libraries(tet_experiment TetLib igl::core igl::opengl_glfw igl::open
 add_executable(mesh_viewer "src/mesh_viewer.cpp")
 target_link_libraries(mesh_viewer TetLib igl::core igl::opengl_glfw igl::opengl_glfw_imgui igl::png CGAL::CGAL)
 
-add_executable(boundary_example "src/boundary_example.cpp")
-target_link_libraries(boundary_example TetLib igl::core igl::opengl_glfw igl::opengl_glfw_imgui igl::png CGAL::CGAL)
+add_executable(playground "src/playground.cpp")
+target_link_libraries(playground TetLib igl::core igl::opengl_glfw igl::opengl_glfw_imgui igl::png CGAL::CGAL)
 
