@@ -868,34 +868,4 @@ calcDECLaplacianRegularFromC3t3(
     L.resize(nv, nv);
     L.setFromTriplets(triplets.begin(), triplets.end());
 
-	bool lpdbg = false;
-	if (lpdbg) 
-	{
-
-		Eigen::MatrixXd LV = L * V;
-		for(auto it = tr.finite_vertices_begin(); it != tr.finite_vertices_end(); ++it)
-		{
-			std::vector<typename C3t3::Vertex_handle> adj;
-			tr.adjacent_vertices(it, std::back_inserter(adj));
-			bool adjtoinf=false;
-			for (auto h: adj) {
-				if (tr.is_infinite(h)) {
-					adjtoinf=true;
-				}	
-			}
-			if (adjtoinf) {
-				LV.row(idMap[it]).setZero();
-			}
-		}
-		std::cout << "LP Test: LV.norm = " << LV.norm() << std::endl;
-
-		for (int i=0; i < nv; i++) {
-			if (L.coeff(i,i) == 0) {
-				std::cout << "zerodiagentry at " << i << std::endl;	
-			}
-		}
-
-	}
-
-
 }
