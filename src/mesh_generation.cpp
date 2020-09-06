@@ -407,7 +407,7 @@ int main(int argc, char *argv[])
 		if (atoi(argv[6])){
 			std::cout << "WRITE OUT REG WEIGHTS" << std::endl;
 			regweightssavepath = "out/" + FILENAME_base + "_regweights.csv";
-			decregoutpath      = "out/" + FILENAME_base + "_decreg";
+			decregoutpath      = "out/" + FILENAME_base;
 			mOptions.opt_lloyd   = true;
 			mOptions.opt_perturb = true;
 			mOptions.opt_exude   = true;
