@@ -539,8 +539,8 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	bool heatdiffusion = false;
-	bool dirichlet     = true;
+	bool heatdiffusion = true;
+	bool dirichlet     = false;
 
 	double regnoise;
 	std::string run_postfix = "";
@@ -657,6 +657,10 @@ int main(int argc, char *argv[])
 		} else if (run_name.rfind("EmbeddedDoubleSphere", 0) == 0) {
 			embeddedDoubleSphere = true;
 			removeInner = false;
+		} else if (run_name.rfind("OriginSphere", 0) == 0) {
+			removeInner = false;
+			innerShell.clear();
+			innerShell.push_back(originind);
 		}
 		std::cout << "..loaded Singlesphere : " << singleSphere << std::endl;
 		std::cout << "Sphere Sizes: " << innerShell.size() << "," << middleShell.size() << "," << outerShell.size() << std::endl;
@@ -918,13 +922,26 @@ int main(int argc, char *argv[])
 				std::cout << " h_dec(0) " << h_dec(0) << std::endl;
 				std::cout << " D(0) " << D(0) << std::endl;
 
+				/*
+				std::cout << "MiddleShell.size(): " << std::endl;
+				for(int i=0; i < middleShell.size() - 1; i++) std::cout << middleShell[i] << ", ";
+				std::cout << std::endl;
+				*/
+
 				std::cout << "...write heat vals to file... " << std::endl;
 				std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
 				std::ofstream feil;
 				feil.open(res_out_path);
+
+				/*
 				feil << "middle shell indices" << std::endl;
 				for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
-				feil << middleShell[middleShell.size()-1] << std::endl;
+				if (middleShell.size() > 0) {
+					feil << middleShell[middleShell.size()-1] << std::endl;
+				} else {
+					feil << std::endl;	
+				}
+				*/
 				// -----------------------
 				feil << "h_fem" << "," << "h_dec"; 
 				if (addOpt)         feil << "," << "h_opt";
