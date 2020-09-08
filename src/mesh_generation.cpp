@@ -363,17 +363,18 @@ int main(int argc, char *argv[])
 	// tetlib CELLSIZE  SILENT SINGLESPHERE
 	meshingOptions mOptions;
 	mOptions.cell_size              = std::stod(argv[1]);
-	if (atoi(argv[2])) silent = false;
+	mOptions.minSize                = std::stod(argv[2]);
+	if (atoi(argv[3])) silent = false;
 	std::string regweightssavepath = "";
 	std::string decregoutpath     = "";
 
 	int spheretype = 3; // 0: doublesphere, 1: singlesphere, 2: embeddeddoublesphere 3: originsphere
 	//bool singleSphere = false; // works for facet_size = 1., approx_val = 0.0067;
 	//bool embeddedDoubleSphere = false;
-	if (argc >=4) {
-		spheretype = atoi(argv[3]);	
-		mOptions.facet_size             = std::stod(argv[4]); //1.; // 0.1 works with 0.02 approx val
-		mOptions.approx_val             = std::stod(argv[5]); //0.0067;
+	if (argc >=5) {
+		spheretype = atoi(argv[4]);	
+		mOptions.facet_size             = std::stod(argv[5]); //1.; // 0.1 works with 0.02 approx val
+		mOptions.approx_val             = std::stod(argv[6]); //0.0067;
 	}
 
 	mOptions.opt_lloyd        = false;
@@ -400,11 +401,11 @@ int main(int argc, char *argv[])
 		FILENAME_base = "EmbeddedDoubleSphere_";
 	if (spheretype == 3)
 		FILENAME_base = "OriginSphere";
-	for (int i=0; i < 1; ++i) FILENAME_base += argv[i+1] + std::string("_");
+	for (int i=0; i < 2; ++i) FILENAME_base += argv[i+1] + std::string("_");
 	// /filename base
 	
-	if (argc >= 7) {
-		if (atoi(argv[6])){
+	if (argc >= 8) {
+		if (atoi(argv[7])){
 			std::cout << "WRITE OUT REG WEIGHTS" << std::endl;
 			regweightssavepath = "out/" + FILENAME_base + "_regweights.csv";
 			decregoutpath      = "out/" + FILENAME_base;
