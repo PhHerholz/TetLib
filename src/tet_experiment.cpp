@@ -134,19 +134,33 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	std::cout << "innerShell.size(): " << innerShell.size() << std::endl;
 	std::cout << "start solve" << std::endl;
 
+	bool enforce_border = false;
 	// Solve FEM
 	Eigen::MatrixXd B_fem = b_base; //M * b_base;
-	Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_fem;
-    chol_fem.analyzePattern(A_fem);
-    chol_fem.factorize(A_fem);
-    h_fem = chol_fem.solve(B_fem);
+	if (enforce_border) {
+		Eigen::MatrixXd constrValuesFEM(outerShell.size(), 1);
+		constrValuesFEM.setZero();
+		solveConstrainedSymmetric(A_fem, B_fem, outerShell, constrValuesFEM, h_fem);
+	} else {
+		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_fem;
+		chol_fem.analyzePattern(A_fem);
+		chol_fem.factorize(A_fem);
+		h_fem = chol_fem.solve(B_fem);
+	}
 
 	// Solve DEC
 	Eigen::MatrixXd B_dec = b_base; // M_dec * b_base;
-	Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_dec;
-    chol_dec.analyzePattern(A_dec);
-    chol_dec.factorize(A_dec);
-    h_dec = chol_dec.solve(B_dec);
+	if (enforce_border) {
+		std::cout <<"...fixing border" << std::endl;
+		Eigen::MatrixXd constrValuesDEC(outerShell.size(), 1);
+		constrValuesDEC.setZero();
+		solveConstrainedSymmetric(A_dec, B_dec, outerShell, constrValuesDEC, h_dec);
+	} else {
+		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_dec;
+		chol_dec.analyzePattern(A_dec);
+		chol_dec.factorize(A_dec);
+		h_dec = chol_dec.solve(B_dec);
+	}
 
 	if (reg) {	
 		A_decreg = M_decreg - t * L_r;
