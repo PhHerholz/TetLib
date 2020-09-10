@@ -41,7 +41,7 @@ typedef Kernel::Point_3 Point;
 
 #include <Eigen/Dense>
 
-void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, int &originind, double radius=2.)
+void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, int &originind, double radius=2., double eps=1e-4)
 {
 	/// retrieve the indices of all points lying on the three spherical shells by their distance to the origin
 
@@ -60,7 +60,6 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 	
 	// this is the smallest threshold that seems to find all points
 	// (for doublesphere it seemed to be 1e-5, for single 1e-4
-	double eps=1e-4;
 	
 	for (auto vh: tri.mesh.finite_vertex_handles()) {
 		double dist = sqrt(CGAL::squared_distance(vh->point(), Point(CGAL::ORIGIN)));		
@@ -85,18 +84,103 @@ void retrieveShellIndices(CGALTriangulation<Kernel> tri, std::vector<int> &inner
 }
 
 void 
-loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, std::string filepath, int &originind)
+loadMeshWithShellIndices(CGALTriangulation<Kernel> &tri, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, std::string filepath, int &originind, double outerrad, double eps)
 {
 	// load Triangulation from file and read orbitpoints
 	tri.read(filepath);
+
+	/*
 	double maxdist=0.;
 	for (auto vh: tri.mesh.finite_vertex_handles()) {
 		double dist = sqrt(CGAL::squared_distance(vh->point(), Point(CGAL::ORIGIN)));		
 		if (dist > maxdist) maxdist = dist;
 	}
-
 	std::cout << "MAXDIST: " << maxdist << std::endl;
-	retrieveShellIndices(tri, innerShell, middleShell, outerShell, originind, maxdist);
+	*/
+	retrieveShellIndices(tri, innerShell, middleShell, outerShell, originind, outerrad, eps);
+}
+
+
+void 
+calcAndWriteHeatGradsAllVertices(CGALTriangulation<Kernel> tri, Eigen::MatrixXd h_fem, Eigen::MatrixXd h_dec, Eigen::MatrixXd h_reg, bool includereg, std::string outpath)
+{
+	// calc heat gradients
+	Eigen::MatrixXd heatGradField_fem, heatGradField_dec, heatGradField_reg;
+	tri.calcHeatGradientAllVertices(h_fem, heatGradField_fem);
+	tri.calcHeatGradientAllVertices(h_dec, heatGradField_dec);
+	if (includereg) {
+		tri.calcHeatGradientAllVertices(h_reg, heatGradField_reg);
+	}
+
+	int nv = tri.mesh.number_of_vertices();
+	Eigen::MatrixXd V(nv, 3);
+	for(auto h : tri.mesh.finite_vertex_handles())
+	{
+		V(h->info(), 0) = h->point().x();
+		V(h->info(), 1) = h->point().y();
+		V(h->info(), 2) = h->point().z();
+	}
+
+
+	std::ofstream feil;
+	feil.open(outpath);
+
+	// vertex header
+	feil << "vx,vy,vz";
+	// hg headers
+	feil << "," << "hg_fem_x" << "," << "hg_fem_y" << "," << "hg_fem_z";
+	feil << "," << "hg_dec_x" << "," << "hg_dec_y" << "," << "hg_dec_z";
+	if (includereg) feil << "," << "hg_reg_x" << "," << "hg_reg_y" << "," << "hg_reg_z";
+	feil << std::endl;
+
+	for (int i=0; i<heatGradField_fem.rows();++i) {
+
+		feil << V(i, 0) << "," << V(i,1) << "," << V(i,2);
+		// hg values
+		feil << "," << heatGradField_fem(i, 0) <<  "," << heatGradField_fem(i, 1) << "," << heatGradField_fem(i, 2);
+		feil << "," << heatGradField_dec(i, 0) <<  "," << heatGradField_dec(i, 1) << "," << heatGradField_dec(i, 2);
+		if (includereg) feil << "," << heatGradField_reg(i, 0) <<  "," << heatGradField_reg(i, 1) << "," << heatGradField_reg(i, 2);
+
+		feil << std::endl;
+	}
+}
+
+void 
+calcAndWriteHeatGradsAndCentroidsAllCells(CGALTriangulation<Kernel> tri, Eigen::MatrixXd h_fem, Eigen::MatrixXd h_dec, Eigen::MatrixXd h_reg, bool includereg, std::string outpath)
+{
+	//calc cell centroids
+	Eigen::MatrixXd heatGradField, cellCentroids;
+	tri.calcCentroidAllCells(cellCentroids);
+
+	// calc heat gradients
+	Eigen::MatrixXd heatGradField_fem, heatGradField_dec, heatGradField_reg;
+	tri.calcHeatGradientAllCells(h_fem, heatGradField_fem);
+	tri.calcHeatGradientAllCells(h_dec, heatGradField_dec);
+	if (includereg) {
+		tri.calcHeatGradientAllCells(h_reg, heatGradField_reg);
+	}
+
+	std::ofstream feil;
+	feil.open(outpath);
+	// centroid header
+	feil << "centroid_x" << "," << "centroid_y" << "," << "centroid_z";
+	// hg headers
+	feil << "," << "hg_fem_x" << "," << "hg_fem_y" << "," << "hg_fem_z";
+	feil << "," << "hg_dec_x" << "," << "hg_dec_y" << "," << "hg_dec_z";
+	if (includereg) feil << "," << "hg_reg_x" << "," << "hg_reg_y" << "," << "hg_reg_z";
+	feil << std::endl;
+
+	for (int i=0; i<cellCentroids.rows();++i) {
+		// centroid values
+		feil << cellCentroids(i, 0) <<  "," << cellCentroids(i, 1) << "," << cellCentroids(i, 2);
+
+		// hg values
+		feil << "," << heatGradField_fem(i, 0) <<  "," << heatGradField_fem(i, 1) << "," << heatGradField_fem(i, 2);
+		feil << "," << heatGradField_dec(i, 0) <<  "," << heatGradField_dec(i, 1) << "," << heatGradField_dec(i, 2);
+		if (includereg) feil << "," << heatGradField_reg(i, 0) <<  "," << heatGradField_reg(i, 1) << "," << heatGradField_reg(i, 2);
+
+		feil << std::endl;
+	}
 }
 
 void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M, Eigen::SparseMatrix<double>& M_dec, Eigen::SparseMatrix<double>& M_decreg, double t=-1)
@@ -151,7 +235,8 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	// Solve DEC
 	Eigen::MatrixXd B_dec = b_base; // M_dec * b_base;
 	if (enforce_border) {
-		std::cout <<"...fixing border" << std::endl;
+		std::cout << "...fixing border" << std::endl;
+		std::cout << "outerShelll.size = " << outerShell.size() << std::endl;
 		Eigen::MatrixXd constrValuesDEC(outerShell.size(), 1);
 		constrValuesDEC.setZero();
 		solveConstrainedSymmetric(A_dec, B_dec, outerShell, constrValuesDEC, h_dec);
@@ -654,8 +739,16 @@ int main(int argc, char *argv[])
 
 		std::string filepath = run_folder + run_name + ".meshfile";
 
+		// check the sphere size (important for loading the shell indices)
+		double outerrad = 2.;
+		double eps      = 1e-4;
+		if (run_name.rfind("OriginSphere", 0) == 0){
+			eps = 1e-2;
+			outerrad = 1.;
+		}
+
 		int originind = -1;
-		loadMeshWithShellIndices(tri, innerShell, middleShell, outerShell, filepath, originind);
+		loadMeshWithShellIndices(tri, innerShell, middleShell, outerShell, filepath, originind, outerrad, eps);
 
 		bool singleSphere = false;
 		bool embeddedDoubleSphere = false;
@@ -927,6 +1020,12 @@ int main(int argc, char *argv[])
 				//double t = 0.001;// 0.005;
 				solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, M, M_dec, M_decreg, heat_timestep);
 
+				std::string heatgradOutPath_cells = run_folder + run_name + run_postfix +    "heatgradients_cells.csv";
+				std::string heatgradOutPath_vertices = run_folder + run_name + run_postfix + "heatgradients_vertices.csv";
+				bool includereg = reg;
+				calcAndWriteHeatGradsAndCentroidsAllCells(tri, h_fem, h_dec, h_decreg, includereg, heatgradOutPath_cells);
+				calcAndWriteHeatGradsAllVertices(tri, h_fem, h_dec, h_decreg, includereg, heatgradOutPath_vertices);
+
 				std::cout << "...calc distances to origin" << std::endl;
 				Eigen::VectorXd D;
 				tri.calcDistToPointAllVertices(D, CGAL::ORIGIN);
@@ -936,26 +1035,10 @@ int main(int argc, char *argv[])
 				std::cout << " h_dec(0) " << h_dec(0) << std::endl;
 				std::cout << " D(0) " << D(0) << std::endl;
 
-				/*
-				std::cout << "MiddleShell.size(): " << std::endl;
-				for(int i=0; i < middleShell.size() - 1; i++) std::cout << middleShell[i] << ", ";
-				std::cout << std::endl;
-				*/
-
 				std::cout << "...write heat vals to file... " << std::endl;
 				std::string res_out_path = run_folder + run_name + run_postfix + "heatvals.csv";
 				std::ofstream feil;
 				feil.open(res_out_path);
-
-				/*
-				feil << "middle shell indices" << std::endl;
-				for(int i=0; i < middleShell.size() - 1; i++) feil << middleShell[i] << ", ";
-				if (middleShell.size() > 0) {
-					feil << middleShell[middleShell.size()-1] << std::endl;
-				} else {
-					feil << std::endl;	
-				}
-				*/
 				// -----------------------
 				feil << "h_fem" << "," << "h_dec"; 
 				if (addOpt)         feil << "," << "h_opt";

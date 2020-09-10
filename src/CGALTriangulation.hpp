@@ -181,6 +181,21 @@ public:
 	void
 	calcIsDelaunayFlagAllCells();
 
+	// Heat Gradients per TET
+	void 
+	calcHeatGradientAllCells(Eigen::MatrixXd h, Eigen::MatrixXd &heatGradField);
+	void
+	evaluateHeatGradByDirectionPerCell(Eigen::MatrixXd &heatGradField, Eigen::MatrixXd &hGMetricRes);
+
+	void 
+	calcCentroidAllCells(Eigen::MatrixXd &cellCentroids);
+
+	// Heat Gradients per VERTEX
+	void 
+	calcHeatGradientAllVertices(Eigen::MatrixXd h, Eigen::MatrixXd &heatGradField);
+	void 	
+	solveConstrainedLS(Eigen::VectorXd &grad, double &b, Eigen::MatrixXd X, Eigen::MatrixXd Y, Eigen::MatrixXd x0, double y0, double stab=1e-20);
+
 	// performs random flips in the mesh
 	// WARNING: this method resets the cell indices since the cells are changed
 	void

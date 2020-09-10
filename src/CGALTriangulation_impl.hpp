@@ -4,6 +4,8 @@
 #include <fstream>
 #include <unordered_map>
 
+#include <igl/grad.h>
+
 
 template<class TKernel>
 CGALTriangulation<TKernel>::CGALTriangulation()
@@ -1951,6 +1953,209 @@ CGALTriangulation<TKernel>::calcDistToPointAllVertices(Eigen::VectorXd &D, Point
 	D.resize(mesh.number_of_vertices());
     for(auto vh : mesh.finite_vertex_handles()) {	
 		D(vh->info()) = sqrt(CGAL::squared_distance(vh->point(), p));
+	}
+}
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::calcCentroidAllCells(Eigen::MatrixXd &cellCentroids)
+{
+	cellCentroids.resize(mesh.number_of_finite_cells(), 3);
+	for (auto ch: mesh.finite_cell_handles()) {
+		auto tet = mesh.tetrahedron(ch);
+		// calc and save centroid of the tet
+		Point centroid = CGAL::centroid(tet.vertex(0), tet.vertex(1), tet.vertex(2), tet.vertex(3));
+		cellCentroids(ch->info(), 0) = centroid.x();
+		cellCentroids(ch->info(), 1) = centroid.y();
+		cellCentroids(ch->info(), 2) = centroid.z();
+	}
+}
+
+template<class TKernel>
+void  
+CGALTriangulation<TKernel>::calcHeatGradientAllCells(Eigen::MatrixXd h, Eigen::MatrixXd &heatGradField)
+{
+	heatGradField.resize(mesh.number_of_finite_cells(), 3);
+
+	Eigen::MatrixXd F(1, 4);
+	for (int i=0; i<4; ++i) F(0,i) = i;
+
+	for (auto ch: mesh.finite_cell_handles()) {
+		// calc and save gradient of the tet
+		Eigen::MatrixXd V(4, 3);
+		Eigen::MatrixXd U(4, 1);
+		Eigen::SparseMatrix<double> G(1,3);
+		for (int i = 0; i < 4; ++i) {
+			V(i,0) = ch->vertex(i)->point().x();
+			V(i,1) = ch->vertex(i)->point().y();
+			V(i,2) = ch->vertex(i)->point().z();
+		}
+		// gradient operator call
+		igl::grad(V,F,G);
+
+		// apply gradient operator to values
+		for (int i = 0; i < 4; ++i) U(i, 0) = h(ch->vertex(i)->info());
+		Eigen::MatrixXd GU = Eigen::Map<const Eigen::MatrixXd>((G*U).eval().data(),F.rows(),3);
+
+		for (int j=0; j<3; ++j) {
+			heatGradField(ch->info(), j) = GU(0,j);
+		}
+	}
+}
+
+template<class TKernel>
+void  
+CGALTriangulation<TKernel>::evaluateHeatGradByDirectionPerCell(Eigen::MatrixXd &heatGradField, Eigen::MatrixXd &hGMetricRes)
+{
+	for (auto ch: mesh.finite_cell_handles()) {
+		auto tet = mesh.tetrahedron(ch);
+
+		// centroid as the point in the tet in which the gradient directions are evaluated
+		Point centroid = CGAL::centroid(tet.vertex(0), tet.vertex(1), tet.vertex(2), tet.vertex(3));
+		double pointnorm = sqrt(CGAL::squared_distance(CGAL::ORIGIN, centroid));
+		
+		// analytic gradient direction
+		Eigen::MatrixXd gradDir(1,3);
+		gradDir << centroid.x() / pointnorm, centroid.y() / pointnorm, centroid.z() / pointnorm;
+
+		// heat gradient direction
+		Eigen::MatrixXd heatGrad = heatGradField.row(ch->info());
+
+		hGMetricRes(ch->info()) = gradDir * (heatGrad / heatGrad.norm());
+	}
+}
+
+template<class TKernel>
+void
+CGALTriangulation<TKernel>::solveConstrainedLS(Eigen::VectorXd &grad, double &b, Eigen::MatrixXd X, Eigen::MatrixXd Y, Eigen::MatrixXd x0, double y0, double stab)
+{
+	using namespace Eigen;
+	//std::cout << "X.rows(): " << X.rows() << std::endl;
+	int N = X.rows();
+	assert(Y.rows() == N);
+	// shapes: X (N, 3), Y (N, 1), x0 (1, 3), y0 (1, 1) 
+	
+	grad.resize(3);
+	grad.setZero();
+	
+	//std::cout << "p" << std::endl;
+	// concat the one dimension to X and x0
+	//MatrixXd ons(N, 1); ons.setOnes(N, 1);
+	MatrixXd X_ (N, 4);  
+	MatrixXd x0_ (1, 4); 
+	// X_ << X, ons;
+	// // x0_ << x0, 1.;
+	//
+	for (int i=0; i<N; ++i) {
+		for (int j=0; j<3; ++j) {
+			X_(i,j) = X(i,j);
+		}
+		X_(i, 3) = 1;
+	}
+	for (int j=0; j<3; ++j) {
+		x0_(0, j) = x0(j);
+	}
+	x0_(0, 3) = 1.;
+
+	/*
+	std::cout << "X_ (" << X_.rows() << ", " << X_.cols() << "): " << std::endl;
+	std::cout << X_ <<  std::endl;
+	std::cout << "Y   : " << Y  <<  std::endl;
+	std::cout << "x0_ : " << x0_ << std::endl;
+	std::cout << "y0  : " << y0  << std::endl;
+	*/
+
+	MatrixXd XXtinv = (X_.transpose() * X_ + stab * MatrixXd::Identity(4, 4) ).inverse();
+
+	double lbda_up = (x0_ * XXtinv * X_.transpose() * Y)(0,0) - y0;
+	double lbda_do = (x0_ * XXtinv * x0_.transpose()).value();
+	double lbda = lbda_up / lbda_do; 
+	/*
+	std::cout << "lbda_up: " << lbda_up << std::endl;
+	std::cout << "lbda_do: " << lbda_do << std::endl;
+	*/
+
+	MatrixXd w = XXtinv * (X_.transpose() * Y  - x0_.transpose() * lbda); 
+
+	/*
+	std::cout << "XXtinv (" << XXtinv.rows() << ", " << XXtinv.cols() << ") : " << std::endl;
+	std::cout << XXtinv << std::endl;
+	std::cout << "lbda : " << lbda << std::endl;
+	std::cout << "w : " << w << std::endl;
+	*/
+   
+	for (int i=0; i < 3; ++i) {
+		grad(i) = w(i, 0);
+	}
+	b = w(3,0);
+
+	/*
+	std::cout << "grad: " << grad << std::endl;
+	std::cout << "b : " << b << std::endl;
+	std::cout << "y0  " << y0 << std::endl;
+	std::cout << "x0_*w" << x0_ * w << std::endl;
+	*/
+}
+
+template<class TKernel>
+void  
+CGALTriangulation<TKernel>::calcHeatGradientAllVertices(Eigen::MatrixXd h, Eigen::MatrixXd &heatGradField)
+{
+	using namespace Eigen;
+	heatGradField.resize(h.rows(), 3);
+
+	for (auto vh : mesh.finite_vertex_handles()) {
+		std::vector<typename Triangulation::Vertex_handle> adj;
+		mesh.finite_adjacent_vertices(vh, back_inserter(adj));
+
+		// fill the required matrices:
+		MatrixXd X(adj.size(), 3), Y(adj.size(), 1), x0(1, 3); 
+
+		// point itself:
+		x0(0, 0) = vh->point().x();
+		x0(0, 1) = vh->point().y();
+		x0(0, 2) = vh->point().z();
+		double y0 = h(vh->info());
+
+		// the neighbors:
+		int ncntr = 0;
+		for (auto nh: adj) {
+			X(ncntr, 0) = nh->point().x();
+			X(ncntr, 1) = nh->point().y();
+			X(ncntr, 2) = nh->point().z();
+			Y(ncntr, 0) = h(nh->info());
+
+			++ncntr;
+		}
+
+		/*
+		std::cout << "X: " << std::endl;
+		std::cout << X << std::endl;
+		std::cout << "Y: " << std::endl;
+		std::cout << Y << std::endl;
+		std::cout << "x0: " << std::endl;
+		std::cout << x0 << std::endl;
+		std::cout << "y0: " << std::endl;
+		std::cout << y0 << std::endl;
+		std::cout << " 4 " << std::endl;
+		*/
+
+		// solve 
+		VectorXd w(3);
+		double b;
+
+		solveConstrainedLS(w, b, X, Y, x0, y0, 0.);
+		
+		// check constraint and error
+		//std::cout << "Check: w.transpose() * x0 + b = " << (w.transpose() * x0.transpose())(0, 0)   + b << std::endl;
+		//std::cout << "                           y0 = " << y0 << std::endl;
+
+		//std::cout << "Check: w.transpose() * X + b = " << (w.transpose() *
+
+		// write gradient (w) to the gradfield:
+		for (int i=0; i<3; ++i) {
+			heatGradField(vh->info(), i) = w(i);
+		}
 	}
 }
 
