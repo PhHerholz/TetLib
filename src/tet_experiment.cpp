@@ -778,6 +778,7 @@ int main(int argc, char *argv[])
 			embeddedDoubleSphere = true;
 			removeInner = false;
 		} else if (run_name.rfind("OriginSphere", 0) == 0) {
+			singleSphere = true;
 			removeInner = false;
 			innerShell.clear();
 			innerShell.push_back(originind);
@@ -1008,7 +1009,6 @@ int main(int argc, char *argv[])
 				x = normalizeHeatValues(h_decreg);
 
 			}
-
 
 		} else if (heatdiffusion) {
 
