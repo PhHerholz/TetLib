@@ -401,7 +401,7 @@ int main(int argc, char *argv[])
 		FILENAME_base = "EmbeddedDoubleSphere_";
 	if (spheretype == 3)
 		FILENAME_base = "OriginSphere";
-	for (int i=0; i < 2; ++i) FILENAME_base += argv[i+1] + std::string("_");
+	for (int i=0; i < 1; ++i) FILENAME_base += argv[i+1] + std::string("_");
 	// /filename base
 	
 	if (argc >= 7) {

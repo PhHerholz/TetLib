@@ -183,7 +183,7 @@ calcAndWriteHeatGradsAndCentroidsAllCells(CGALTriangulation<Kernel> tri, Eigen::
 	}
 }
 
-void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M, Eigen::SparseMatrix<double>& M_dec, Eigen::SparseMatrix<double>& M_decreg, double t=-1)
+void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M, Eigen::SparseMatrix<double>& M_dec, Eigen::SparseMatrix<double>& M_decreg, std::string reglaplaceloadpath, double t=-1)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -192,9 +192,22 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	Eigen::SparseMatrix<double> A_fem, A_dec, A_decreg, L_fem, L_dec, L_r, Id(n,n);
 	Id.setIdentity();
 
-	if (reg) {
-		std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
-		tri.DECLaplacianRegular(*reg, L_r, &M_decreg);
+
+	bool useregular = (reg || !reglaplaceloadpath.empty());
+
+	if (useregular) {
+		if (!reglaplaceloadpath.empty()) {
+			std::cout << "Regpath given, load decreg L and M from file" << std::endl;
+			std::cout << "path: " << reglaplaceloadpath << std::endl;
+			Eigen::loadMarket(L_r,      reglaplaceloadpath + "decregLoptimized.mtx");
+			Eigen::loadMarket(M_decreg, reglaplaceloadpath + "decregMoptimized.mtx");
+
+			//std::cout << "L_r.shape = " << L_r.rows() << "," << L_r.cols() << std::endl;
+			//std::cout << "L_r.shape = " << M_decreg.rows() << "," << M_decreg.cols() << std::endl;
+		} else {
+			std::cout << "Regular found, calc the declaplaceregular" << std::endl;	
+			tri.DECLaplacianRegular(*reg, L_r, &M_decreg);
+		}
 	}
 
 	tri.massMatrix(M);
@@ -247,7 +260,7 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 		h_dec = chol_dec.solve(B_dec);
 	}
 
-	if (reg) {	
+	if (useregular) {	
 		A_decreg = M_decreg - t * L_r;
 		Eigen::MatrixXd B_reg = b_base; // M_dec * b_base;
 		Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> chol_reg;
@@ -1012,17 +1025,22 @@ int main(int argc, char *argv[])
 				Eigen::MatrixXd h_fem, h_dec, h_opt, h_bndropt, h_decreg;
 				Eigen::SparseMatrix<double> M, M_dec, M_decreg;
 				std::string laplacesavepath = "";
+				std::string regloadpath = "";
 				if (saveLaplacians) {
 					laplacesavepath = run_folder + run_name  + run_postfix;
+				}
+				if (regnoise == -2) {
+					regloadpath  = run_folder + run_name;
 				}
 
 				std::cout << "...solve heat diffusion" << std::endl;
 				//double t = 0.001;// 0.005;
-				solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, M, M_dec, M_decreg, heat_timestep);
+				solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, M, M_dec, M_decreg, regloadpath, heat_timestep);
 
 				std::string heatgradOutPath_cells = run_folder + run_name + run_postfix +    "heatgradients_cells.csv";
 				std::string heatgradOutPath_vertices = run_folder + run_name + run_postfix + "heatgradients_vertices.csv";
-				bool includereg = reg;
+
+				bool includereg = (reg || regnoise == -2);
 				calcAndWriteHeatGradsAndCentroidsAllCells(tri, h_fem, h_dec, h_decreg, includereg, heatgradOutPath_cells);
 				calcAndWriteHeatGradsAllVertices(tri, h_fem, h_dec, h_decreg, includereg, heatgradOutPath_vertices);
 
@@ -1043,10 +1061,10 @@ int main(int argc, char *argv[])
 				feil << "h_fem" << "," << "h_dec"; 
 				if (addOpt)         feil << "," << "h_opt";
 				if (addBoundaryOpt) feil << "," << "h_bndropt";
-				if (reg)            feil << "," << "h_decreg";
+				if (reg || regnoise == -2)            feil << "," << "h_decreg";
 				if (includeMass){
 					feil << "," << "M" << "," << "M_dec";
-					if (reg) feil << "," << "M_decreg";
+					if (reg || regnoise == -2) feil << "," << "M_decreg";
 				}
 				feil << ","<< "pointnorm";
 				feil << std::endl;
@@ -1054,10 +1072,10 @@ int main(int argc, char *argv[])
 					feil << h_fem(r) << "," << h_dec(r);
 					if (addOpt)         feil << "," << h_opt(r);
 					if (addBoundaryOpt) feil << "," << h_bndropt(r);
-					if (reg) feil << "," << h_decreg(r);
+					if (reg || regnoise == -2) feil << "," << h_decreg(r);
 					if (includeMass) {
 						feil << "," << M.coeff(r,r) << "," << M_dec.coeff(r,r);
-						if (reg) feil << "," << M_decreg.coeff(r,r);
+						if (reg || regnoise == -2) feil << "," << M_decreg.coeff(r,r);
 					}
 					feil << "," << D(r);
 					feil << std::endl;
