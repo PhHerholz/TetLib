@@ -30,10 +30,10 @@ sphere_function (const typename TKernel::Point& p);
 // SPHERE
 template<class TKernel>
 void
-meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath="");
+meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath="", std::string decreglaplacianoutpath="");
 template<class TKernel2, class TKernel>
 void 
-meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath="");
+meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath="", std::string decreglaplacianoutpath="");
 
 // DOUBLESPHERE:
 template<class TKernel>

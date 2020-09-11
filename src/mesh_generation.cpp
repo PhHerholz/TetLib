@@ -363,18 +363,18 @@ int main(int argc, char *argv[])
 	// tetlib CELLSIZE  SILENT SINGLESPHERE
 	meshingOptions mOptions;
 	mOptions.cell_size              = std::stod(argv[1]);
-	mOptions.minSize                = std::stod(argv[2]);
-	if (atoi(argv[3])) silent = false;
+	//mOptions.minSize                = std::stod(argv[2]);
+	if (atoi(argv[2])) silent = false;
 	std::string regweightssavepath = "";
 	std::string decregoutpath     = "";
 
 	int spheretype = 3; // 0: doublesphere, 1: singlesphere, 2: embeddeddoublesphere 3: originsphere
 	//bool singleSphere = false; // works for facet_size = 1., approx_val = 0.0067;
 	//bool embeddedDoubleSphere = false;
-	if (argc >=5) {
-		spheretype = atoi(argv[4]);	
-		mOptions.facet_size             = std::stod(argv[5]); //1.; // 0.1 works with 0.02 approx val
-		mOptions.approx_val             = std::stod(argv[6]); //0.0067;
+	if (argc >=4) {
+		spheretype = atoi(argv[3]);	
+		mOptions.facet_size             = std::stod(argv[4]); //1.; // 0.1 works with 0.02 approx val
+		mOptions.approx_val             = std::stod(argv[5]); //0.0067;
 	}
 
 	mOptions.opt_lloyd        = false;
@@ -404,8 +404,8 @@ int main(int argc, char *argv[])
 	for (int i=0; i < 2; ++i) FILENAME_base += argv[i+1] + std::string("_");
 	// /filename base
 	
-	if (argc >= 8) {
-		if (atoi(argv[7])){
+	if (argc >= 7) {
+		if (atoi(argv[6])){
 			std::cout << "WRITE OUT REG WEIGHTS" << std::endl;
 			regweightssavepath = "out/" + FILENAME_base + "_regweights.csv";
 			decregoutpath      = "out/" + FILENAME_base;
@@ -422,7 +422,7 @@ int main(int argc, char *argv[])
 	//mOptions.boundingRad            = std::stod(argv[5]);
 
 	double minVolume     = 0.;
-	bool   boundary_only = true;
+	//bool   boundary_only = true;
 
 	// minangle colormap mapping options
 	double minangle_min_threshold = 0.;
@@ -437,7 +437,7 @@ int main(int argc, char *argv[])
 	} else if (spheretype == 2) {
 		meshEmbeddedDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
 	} else if (spheretype == 3) {
-		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath);
+		meshSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath, decregoutpath);
 	} else {
 		meshDoubleSphere<CGAL::Exact_predicates_inexact_constructions_kernel>(tri,mOptions, regweightssavepath, decregoutpath);
 	}

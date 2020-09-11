@@ -244,7 +244,7 @@ struct meshingOptions {
 
 template<class TKernel>
 void 
-meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath)
+meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweightsoutpath, std::string decreglaplacianoutpath)
 {
     using namespace CGAL;
     using namespace CGAL::parameters;
@@ -289,16 +289,17 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweig
 			return minSize + (p.x()*p.x() + p.y()*p.y() + p.z()*p.z()) * (cellSize - minSize);
 		}
 	};
+
+	/*
 	non_symmetric_sizing_field size(mOptions.cell_size, mOptions.minSize);
 
 	Facet_criteria facet_criteria(30, mOptions.facet_size, mOptions.approx_val); // angle, size, approximation
 	Cell_criteria cell_criteria(mOptions.cell_radius_edge_ratio, size); // radius-edge ratio, size
 	Mesh_criteria criteria(facet_criteria, cell_criteria);
+	*/
 
-	/*
 	Mesh_criteria criteria(facet_angle=30, facet_size=mOptions.facet_size, facet_distance=0.025,
                          cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=mOptions.cell_size);
-						 */
 
 	// Mesh generation 
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, 
@@ -321,6 +322,16 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweig
         }
 		regweightsfile.close();
 	}
+
+	if (!decreglaplacianoutpath.empty()) {
+		std::cout << "calc dec laplacian regular from c3t3" << std::endl;	
+		Eigen::SparseMatrix<double> L, M; 
+		
+		calcDECLaplacianRegularFromC3t3<TKernel>(c3t3,L,&M);
+		Eigen::saveMarket(L, decreglaplacianoutpath + "decregLoptimized.mtx");
+		Eigen::saveMarket(M, decreglaplacianoutpath + "decregMoptimized.mtx");
+	}
+
 }
 
 
@@ -653,10 +664,10 @@ meshSingleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string r
 
 template<class TKernel2, class TKernel>
 void
-meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath)
+meshSphere(CGALTriangulation<TKernel>& tri, meshingOptions mOptions, std::string regweightsoutpath, std::string decreglaplacianoutpath)
 {
     IndexedTetMesh indexed;
-    meshSphere<TKernel2>(indexed, mOptions, regweightsoutpath);
+    meshSphere<TKernel2>(indexed, mOptions, regweightsoutpath, decreglaplacianoutpath);
     indexed.convert(tri);
 }
 
