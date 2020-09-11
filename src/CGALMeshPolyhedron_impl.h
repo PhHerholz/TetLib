@@ -260,17 +260,45 @@ meshSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string regweig
 	typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> C3t3;
     typedef typename CGAL::Mesh_complex_3_in_triangulation_3<Tr> TMesh;
     typedef typename CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
+	typedef typename Mesh_criteria::Facet_criteria    Facet_criteria;
+	typedef typename Mesh_criteria::Cell_criteria     Cell_criteria;
 
-	//Mesh_domain domain;
-	//if (!use_torus) {
-		// SPHERE
 	Mesh_domain domain = Mesh_domain::create_implicit_mesh_domain(
 										[](Point p)->double{return sphere_function<TKernel>(p, 1.);},
 										typename TKernel::Sphere_3(CGAL::ORIGIN, 5.*5.)
 										);
 
+	// Sizing field
+	struct non_symmetric_sizing_field
+	{
+		non_symmetric_sizing_field(double cSize=0.2, double mSize=0.02) :	
+										cellSize(cSize),
+										minSize(mSize) {}
+		double cellSize;
+		double minSize;
+
+		typedef typename TKernel::FT FT;
+		typedef typename Mesh_domain::Index Index;
+
+		FT operator()(const Point& p, const int, const Index&) const
+		{
+			// distance from  the plane orthogonal to y and going through (0 -1 0) - 
+			//return (p.y() + 2) * ((cellSize - minSize) / 4) + minSize;
+
+			// spherical sizing function: dense in the middle, coarse at the border
+			return minSize + (p.x()*p.x() + p.y()*p.y() + p.z()*p.z()) * (cellSize - minSize);
+		}
+	};
+	non_symmetric_sizing_field size(mOptions.cell_size, mOptions.minSize);
+
+	Facet_criteria facet_criteria(30, mOptions.facet_size, mOptions.approx_val); // angle, size, approximation
+	Cell_criteria cell_criteria(mOptions.cell_radius_edge_ratio, size); // radius-edge ratio, size
+	Mesh_criteria criteria(facet_criteria, cell_criteria);
+
+	/*
 	Mesh_criteria criteria(facet_angle=30, facet_size=mOptions.facet_size, facet_distance=0.025,
                          cell_radius_edge_ratio=mOptions.cell_radius_edge_ratio, cell_size=mOptions.cell_size);
+						 */
 
 	// Mesh generation 
 	C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, 
@@ -374,7 +402,10 @@ meshDoubleSphere(IndexedTetMesh& indexed, meshingOptions mOptions, std::string r
 		FT operator()(const Point& p, const int, const Index&) const
 		{
 			// distance from  the plane orthogonal to y and going through (0 -1 0) - 
-			return (p.y() + 2) * ((cellSize - minSize) / 4) + minSize;
+			//return (p.y() + 2) * ((cellSize - minSize) / 4) + minSize;
+
+			// spherical sizing function: dense in the middle, coarse at the border
+			return minSize + (p.x()*p.x() + p.y()*p.y() + p.z()*p.z()) * (cellSize - minSize);
 		}
 	};
 
