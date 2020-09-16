@@ -905,7 +905,28 @@ int main(int argc, char *argv[])
 		cell_metrics[minangle]=Minang;
 		cell_metrics[amips]=Amips;
 
+		Eigen::VectorXd Dflags, CCCflags;
+		tri.calcIsDelaunayFlagAllCells(Dflags);
+		tri.calcContainsCircumcenterFlagAllCells(CCCflags);
 		std::cout << "clcd" << std::endl;
+
+		std::cout << "(dbg:) " << std::endl;
+		std::cout << "tri.mesh.number_of_finite_cells:  " << tri.mesh.number_of_finite_cells() << std::endl;
+		std::cout << "cell_metrics[volume].size(): " << cell_metrics[volume].size() << std::endl;
+
+		if (true) { //  (regnoise >= 0) {
+			// write values to file again (reg might have changed them)
+			std::ofstream feil;
+			std::string metrics_out_path = run_folder + run_name + run_postfix + "metrics.csv";
+			feil.open(metrics_out_path);
+			feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << "," << "delaunayflag,containsccflag" << std::endl;
+			for(int i=0; i < cell_metrics[volume].size(); i++) {
+				feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) <<
+					"," << Dflags(i) << "," << CCCflags(i) << std::endl;
+			}
+			feil.close();
+		}
+
 
 		bool normalize=false;
 		double amips_max = 100;
@@ -926,22 +947,7 @@ int main(int argc, char *argv[])
 		igl::colormap(igl::COLOR_MAP_TYPE_VIRIDIS, cell_metrics[amips], normalize, cellcolors_amips);
 		cellcolors[amips] = cellcolors_amips;
 
-		Eigen::VectorXd Dflags, CCCflags;
-		tri.calcIsDelaunayFlagAllCells(Dflags);
-		tri.calcContainsCircumcenterFlagAllCells(CCCflags);
 
-		if (regnoise >= 0) {
-			// write values to file again (reg might have changed them)
-			std::ofstream feil;
-			std::string metrics_out_path = run_folder + run_name + run_postfix + "metrics.csv";
-			feil.open(metrics_out_path);
-			feil << metric_names[minangle] << "," << metric_names[amips] << "," << metric_names[volume] << "," << "delaunayflag,containsccflag" << std::endl;
-			for(int i; i < cell_metrics[volume].size(); i++) {
-				feil << cell_metrics[minangle](i) << "," << cell_metrics[amips](i) << "," << cell_metrics[volume](i) <<
-					"," << Dflags(i) << "," << CCCflags(i) << std::endl;
-			}
-			feil.close();
-		}
 
 
 		if (dirichlet) {
