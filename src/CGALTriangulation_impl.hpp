@@ -173,6 +173,7 @@ CGALTriangulation<TKernel>::meanEdgeLengthSquared()
         std::vector<typename Triangulation::Vertex_handle> adj;
 
         mesh.finite_adjacent_vertices(h, back_inserter(adj));
+		// std::cout << "DBG: adj.size() = " << adj.size() << std::endl;
         
         for(auto hi : adj)
             if(!mesh.is_infinite(hi))
@@ -182,6 +183,7 @@ CGALTriangulation<TKernel>::meanEdgeLengthSquared()
                 ++cnt;
             }
     }
+	std::cout << "fnshd" << std::endl;
     
     ret /= cnt;
     
@@ -2341,15 +2343,15 @@ CGALTriangulation<TKernel>::generateRegularFromWeightsfile(std::string weightsfi
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only, bool removeInner){
+CGALTriangulation<TKernel>::replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double filter_threshold, int filter, bool boundary_only, bool removeInner){
 
 	CGALTriangulation<TKernel>::Regular reg = generateRandomRegular(variance);
-	replaceMeshByRegular(reg,innerShell, middleShell, outerShell, minVolume, boundary_only, removeInner);
+	replaceMeshByRegular(reg,innerShell, middleShell, outerShell, filter_threshold, filter, boundary_only, removeInner);
 }
 
 template<class TKernel>
 void
-CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume, bool boundary_only, bool removeInner){
+CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double filter_threshold, int filter, bool boundary_only, bool removeInner){
 
 	// Translate to IndexedTetmesh
     IndexedTetMesh ret;
@@ -2371,11 +2373,17 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 		}
 	}
 
+
+	// unit tetrahedron in columns (used for amips filter)
+	Eigen::Matrix3d unittet;
+	unittet <<	1,     0.5,					  0.5,
+				0, sqrt(3)/2,			sqrt(3)/6,
+				0,       0,		sqrt(2) / sqrt(3);
+
     for(auto it: reg.finite_cell_handles()){
 
 		bool addCell = true;
 
-		// check each cell if (!boundary_only):
 		if (removeInner) {
 			bool innerCell=true;
 			for (int i = 0; i < 4; ++i) {
@@ -2388,32 +2396,49 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 			if (innerCell) addCell=false;
 		}
 
-		bool checkvolcell = false;
-		if (minVolume > 0) {
+		bool checkcell = false;
+		if ((filter_threshold > 0) && (filter > -1)) {
+			// check each cell if (!boundary_only):
 			if (!boundary_only){
 				std::cout << "Check all Cells" << std::endl;		
-				checkvolcell = true;
+				checkcell = true;
 			}
 
 			// if boundary only: check if cell is on boundary
-			if (!checkvolcell) {
+			if (!checkcell) {
 				for (int i = 0; i < 4 ; ++i) {
 					if (reg.mirror_vertex(it, i)->info() == -1) {
 						//std::cout << "Boundary cell " << std::endl;
-						checkvolcell = true;
+						checkcell = true;
 					}
 				}
 			}
 
-			if (checkvolcell) {
+			if (checkcell && filter == 0) {
 				auto tet = reg.tetrahedron(it);
 				double vol = tet.volume();
 				//std::cout << "Vol:    " << vol               << std::endl;
 				//std::cout << "Minvol: " << minVolume << std::endl;
-				if (vol < minVolume){
+				if (vol < filter_threshold){
 					//std::cout << "Raus damit!" << std::endl;	
 					addCell = false;
 				}
+			}
+			if (checkcell && filter == 1) {
+						
+				Eigen::Matrix3d tet, J;
+				
+				for(int col=0; col<3; ++col) {
+					tet(0,col) = it->vertex(col+1)->point().x() - it->vertex(0)->point().x();
+					tet(1,col) = it->vertex(col+1)->point().y() - it->vertex(0)->point().y();
+					tet(2,col) = it->vertex(col+1)->point().z() - it->vertex(0)->point().z();
+				}
+
+				J = tet * unittet.inverse();
+				double amipsval = (J.transpose()*J).trace() / J.determinant();
+			
+				if (amipsval > filter_threshold) addCell = false;
+			
 			}
 		}
 

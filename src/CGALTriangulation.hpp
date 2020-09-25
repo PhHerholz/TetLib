@@ -209,10 +209,10 @@ public:
 	generateRegularFromWeightsfile(std::string weightsfilepath);
 
 	void
-	replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0., bool boundary_only=true, bool removeInner=true);
+	replaceMeshByRegular(Regular &reg, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double filter_threshold=0., int filter=-1, bool boundary_only=true, bool removeInner=true);
 	
 	void
-	replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double minVolume=0, bool boundary_only=true, bool removeInner=true);
+	replaceMeshByRegular(double variance, std::vector<int> &innerShell, std::vector<int> &middleShell, std::vector<int> &outerShell, double filter_threshold=0., int filter=-1, bool boundary_only=true, bool removeInner=true);
     
     // find a vertex that is close to the mean of all others
     int

@@ -121,6 +121,7 @@ calcAndWriteHeatGradsAllVertices(CGALTriangulation<Kernel> tri, Eigen::MatrixXd 
 		V(h->info(), 2) = h->point().z();
 	}
 
+	std::cout << "Number of verties: " << tri.mesh.number_of_vertices() << std::endl;
 
 	std::ofstream feil;
 	feil.open(outpath);
@@ -183,7 +184,7 @@ calcAndWriteHeatGradsAndCentroidsAllCells(CGALTriangulation<Kernel> tri, Eigen::
 	}
 }
 
-void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M, Eigen::SparseMatrix<double>& M_dec, Eigen::SparseMatrix<double>& M_decreg, std::string reglaplaceloadpath, double t=-1)
+void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>::Regular* reg, std::vector<int> innerShell, std::vector<int> outerShell, Eigen::MatrixXd& h_fem, Eigen::MatrixXd& h_dec, Eigen::MatrixXd& h_decreg, Eigen::SparseMatrix<double>& M, Eigen::SparseMatrix<double>& M_dec, Eigen::SparseMatrix<double>& M_decreg, std::string reglaplaceloadpath, std::string laplaceSavePath, double t=-1)
 {
 	//const int cntr = tri.centerVertex();
 	const int n = tri.mesh.number_of_vertices();
@@ -213,6 +214,8 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 	tri.massMatrix(M);
 	tri.FEMLaplacian(L_fem);
 	tri.DECLaplacian(L_dec, &M_dec);
+
+	std::cout << "Ldec.shape: " << L_dec.rows() << ", " << L_dec.cols() << "mesh.nov(): " << tri.mesh.number_of_vertices() << std::endl;
 
 	if (t<0) {
 		std::cout << "t < 0 -> set to mean edge length squared" << std::endl;
@@ -268,6 +271,15 @@ void solveHeatProblem(CGALTriangulation<Kernel>& tri, CGALTriangulation<Kernel>:
 		chol_reg.factorize(A_decreg);
 		h_decreg = chol_reg.solve(B_reg);
 	}
+
+	if (!laplaceSavePath.empty()) {
+		Eigen::saveMarket( L_dec, laplaceSavePath + "_Ldec.mtx");
+		Eigen::saveMarket( L_fem, laplaceSavePath + "_Lfem.mtx");
+		if (useregular) {
+			Eigen::saveMarket(L_r, laplaceSavePath + "_Lreg.mtx");
+		}
+	}
+
 }
 
 bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std::vector<int> ignoreIndices) {
@@ -292,6 +304,7 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 	}
 
 	std::cout << "LV.sum() = " << LV.sum() << std::endl;
+	/*
 	if (LV.norm() > 1e-7) {
 		std::cout << "Linear Precision Error !! " << std::endl;
 		std::cout << "LV.norm= " << LV.norm() << std::endl;
@@ -308,6 +321,7 @@ bool checkLP(CGALTriangulation<Kernel>& tri, Eigen::SparseMatrix<double> L, std:
 		std::cout << "Total of " << cnt << "problematic rows" << std::endl;
 		//return false;
 	}
+	*/
 	return true;
 }
 
@@ -670,7 +684,7 @@ int main(int argc, char *argv[])
 
 	bool meshwrite      = false;
 	bool regwrite       = false;
-	bool saveLaplacians = true ;
+	bool saveLaplacians = false;
 	bool output_mel     = false;
 	bool meshwrite_only = false;
 	regnoise = -1;
@@ -687,15 +701,26 @@ int main(int argc, char *argv[])
 	//run_postfix += "_";	
 	}
 
-	double boundaryCellMinVol = 0.;
-
-	double heat_timestep= 0.005;
+	double boundaryCellFilterValue = 0.;
 	if (argc >= 5) {
-		heat_timestep = std::stod(argv[4]);
+		boundaryCellFilterValue = std::stod(argv[4]);
+	}
+	int tetfilter=-1;
+	if (argc >= 6) {
+		tetfilter = atoi(argv[5]);
+	}
+	bool borderFilterOnly = true;
+	if (argc >= 7) {
+		if (atoi(argv[6])) borderFilterOnly = false;
 	}
 
-	if (argc >= 6) {
-		if (atoi(argv[5])) silent = false;
+	double heat_timestep= 0.005;
+	if (argc >= 8) {
+		heat_timestep = std::stod(argv[7]);
+	}
+
+	if (argc >= 9) {
+		if (atoi(argv[8])) silent = false;
 	}
 
 	std::cout << "Silent: " << silent << std::endl;
@@ -823,7 +848,7 @@ int main(int argc, char *argv[])
 			}
 
 			reg    = &regtri;
-			tri.replaceMeshByRegular(*reg, innerShell, middleShell, outerShell, boundaryCellMinVol, true, removeInner);
+			tri.replaceMeshByRegular(*reg, innerShell, middleShell, outerShell, boundaryCellFilterValue, tetfilter,  borderFilterOnly, removeInner);
 			if (innerShell.size() < 1 || middleShell.size() < 1 || outerShell.size() < 1) {
 				std::cout << "spheresizes post: " << innerShell.size() << ", " << middleShell.size() << ", " << outerShell.size() << std::endl;
 			}
@@ -1041,7 +1066,9 @@ int main(int argc, char *argv[])
 
 				std::cout << "...solve heat diffusion" << std::endl;
 				//double t = 0.001;// 0.005;
-				solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, M, M_dec, M_decreg, regloadpath, heat_timestep);
+				solveHeatProblem(tri, reg, innerShell, outerShell, h_fem, h_dec, h_decreg, M, M_dec, M_decreg, regloadpath, laplacesavepath, heat_timestep);
+
+				std::cout << "...finished solving, shapes: " << h_fem.size() << "," << h_dec.size() << std::endl;	
 
 				std::string heatgradOutPath_cells = run_folder + run_name + run_postfix +    "heatgradients_cells.csv";
 				std::string heatgradOutPath_vertices = run_folder + run_name + run_postfix + "heatgradients_vertices.csv";
