@@ -1180,7 +1180,7 @@ CGALTriangulation<TKernel>::DECLaplacianRegular(CGALTriangulation<TKernel>::Regu
             
                 if(M)
                 {
-					// TODO: eddge.squared_length the correct thing here?
+					// TODO: edge.squared_length the correct thing here?
                     M->valuePtr()[r] += val * (edge.squared_length()) / 6.;
                     M->valuePtr()[s] += val * (edge.squared_length()) / 6.;
                 }
@@ -1907,8 +1907,7 @@ CGALTriangulation<TKernel>::calcIsDelaunayFlagAllCells(Eigen::VectorXd &D){
 	
 		bool del = true; // is delaunay tet flag
 		for (auto vh: mesh.finite_vertex_handles()) {
-			if (h->has_vertex(vh)) break; // point is part of the tet
-			if (CGAL::squared_distance(cc, vh->point()) < radsq) {
+			if (!h->has_vertex(vh) && CGAL::squared_distance(cc, vh->point()) < radsq) {
 				del = false;	
 				break;
 			}
@@ -2275,8 +2274,10 @@ CGALTriangulation<TKernel>::generateRandomRegular(double variance){
     std::normal_distribution<> d{0, variance};
 	
 	std::vector< std::pair<WPoint,unsigned> > points;
+	std::cout << "Variance param: " << variance << std::endl;
     for (auto vh : mesh.finite_vertex_handles()) {
 		double randomweight = fabs(d(gen)); 
+		std::cout << randomweight << ",";
 		points.push_back( std::make_pair(WPoint(vh->point(),randomweight),vh->info()) );
     }
 	std::cout << std::endl;
@@ -2415,6 +2416,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 			}
 
 			if (checkcell && filter == 0) {
+				// MIN VOLUME FILTERING
 				auto tet = reg.tetrahedron(it);
 				double vol = tet.volume();
 				//std::cout << "Vol:    " << vol               << std::endl;
@@ -2425,7 +2427,7 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 				}
 			}
 			if (checkcell && filter == 1) {
-						
+				// AMIPS FILTERING	
 				Eigen::Matrix3d tet, J;
 				
 				for(int col=0; col<3; ++col) {
@@ -2439,6 +2441,26 @@ CGALTriangulation<TKernel>::replaceMeshByRegular(Regular &reg, std::vector<int> 
 			
 				if (amipsval > filter_threshold) addCell = false;
 			
+			}
+			if (checkcell && filter == 2) {
+				double angle, minangle;
+				// MINANGLE FILTERING
+				minangle = std::numeric_limits<double>::max();
+				for(int i = 0; i < 3; ++i)
+				{
+					int face[3]
+					{
+						Triangulation::vertex_triple_index(i, 0),
+						Triangulation::vertex_triple_index(i, 1),
+						Triangulation::vertex_triple_index(i, 2)
+					};
+					for(int j=0; j<3; ++j){
+						angle = CGAL::approximate_dihedral_angle(it->vertex(i)->point().point(), it->vertex(face[j])->point().point(), it->vertex(face[(j+1)%3])->point().point(), it->vertex(face[(j+2)%3])->point().point());
+						if (angle < minangle) minangle=angle;
+					}
+				}
+				if (minangle < filter_threshold) addCell = false;
+
 			}
 		}
 
