@@ -1,5 +1,7 @@
 # TETLIB
+Tetlib provides methods to convert between three common representations for tetrahedral meshes: CGAL, Tetgen and Indexed based. A basic libigl based viewer supporting cut-planes is included for convenience.
 
+## Installation
 Clone this repository. Change to the repo's directory
 
 	cd tetlib
